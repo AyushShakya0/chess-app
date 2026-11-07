@@ -59,25 +59,32 @@ flowchart TD
 ### A. Core Chessboard & Gameplay Mechanics (Chess.com Parity)
 - **Controls & Gestures:**
   - Left-click drag & drop + single-click source, single-click destination.
-  - **Right-Click Drag Arrows:** Draw dynamic arrows between squares (supports Green, Red, Yellow, Blue, Orange using Shift/Ctrl/Alt keys).
-  - **Right-Click Square Highlights:** Paint squares with colored overlays for threat assessment.
-  - Clear board annotations on left-click.
+  - **Right-Click Drag Multi-Color Arrows:**
+    - Standard Right-Click: Yellow / Orange arrow.
+    - Shift + Right-Click: Green arrow (defensive / best paths).
+    - Alt + Right-Click: Red arrow (threats / attacking lines).
+    - Ctrl + Right-Click: Blue arrow (alternative lines).
+  - **Right-Click Square Highlights:** Paint squares with colored overlays (matching modifier keys) for threat assessment.
+  - Clear board annotations on left-click anywhere.
+  - Ghost piece origin indicator during drag + magnetic legal snap.
 - **Premove System:**
-  - Queue up one or multiple premoves while waiting for the opponent's turn.
-  - Visual indicator (highlighted colored trail on board).
+  - Single and **Multi-Premove Queueing** (up to 3 sequential premoves with translucent path trail).
   - Right-click cancels queued premoves immediately.
   - Instant 0.0s execution upon receiving the opponent's move (if legally valid).
-- **Time Controls:**
+- **Time Controls & Clocks:**
   - **Bullet:** 1|0, 1|1, 2|1.
   - **Blitz:** 3|0, 3|2, 5|0, 5|3.
   - **Rapid:** 10|0, 15|10, 30|0.
   - **Custom Clocks:** Any base time + increment.
-- **Assists & Settings:**
+  - **Low-Time Urgency:** Visual red clock pulsing + heartbeat audio cue when < 10 seconds.
+- **Assists, View Modes & Settings:**
+  - **Focus / Zen Mode (Press 'Z'):** Minimalist mode hiding chat, sidebars, and ratings for 100% board focus.
+  - **Blindfold Mode:** Option to hide pieces or replace them with discreet dots for mental calculation training.
   - Show legal move dots / capture rings.
   - Highlight last move & King check indicator.
   - Auto-promote to Queen (toggleable: if off, pop up under-promotion selector: Queen, Rook, Bishop, Knight).
-  - Confirm Resignation / Confirm Draw offer dialogs.
-  - Move notation log (SAN notation, algebraic notation export, PGN export/import, FEN copy).
+  - Confirm Resignation / Confirm Draw offer dialogs (with draw spam cooldown).
+  - Move notation log (SAN notation, algebraic notation export, PGN export/import, FEN copy, animated GIF export).
 
 ### B. Visual Customization & Themes
 - **Board Themes:**
@@ -152,41 +159,45 @@ flowchart TD
 
 ---
 
-### D. Puzzles, Academy & Learning Hub
-- **Puzzles Engine:**
-  - Pull puzzles from the curated open-source Lichess puzzle database (over 3M+ puzzles).
-  - Categorized by themes: Pin, Fork, Skewer, Back Rank, Mate in 1/2/3, Endgame, Opening Traps.
-  - Daily Puzzle with streak tracker.
-  - Puzzle Rush / Survival mode (3-minute blitz puzzle solver).
-- **Opening Explorer:**
-  - Interactive opening tree with move frequency, master win rates, and popular continuations (Sicilian, Ruy Lopez, French, Caro-Kann, Queen's Gambit, King's Indian).
-- **Interactive "Learn to Play" Tutorials:**
-  - Step-by-step interactive board exercises for beginners: piece movement, capture rules, special rules (Castling, En Passant, Pawn Promotion).
-- **Chess Strategy Blog & Guides:**
-  - Rich blog with Markdown / MDX articles covering opening theory, grandmaster game reviews, and tactical motifs.
+### E. Analysis, "Game Review" & Live "Fun Analysis"
+- **Stockfish.wasm Web Worker Analysis (Zero Cloud Cost):**
+  - Runs 100% on the client browser—high-depth calculation with zero server latency.
+  - Live Evaluation Bar (+/- decimal score or `#M` for mate).
+  - **Chess.com-Grade Move Classification Badges:**
+    - 💎 **Brilliant (`!!`)** — Sacrificial move that cements a winning advantage.
+    - 🌟 **Great Move (`!`)** — The only holding or winning move in a sharp position.
+    - 🟢 **Best Move (`★`)** — Optimal Stockfish line.
+    - 🟩 **Excellent (`✓`)** — Strong positional move.
+    - 🟦 **Good (`✓`)** — Solid standard continuation.
+    - 📖 **Book Move (`📖`)** — Theoretical opening knowledge.
+    - 🟡 **Inaccuracy (`?!`)** — Slight evaluation dip (0.5 – 1.0).
+    - 🟠 **Mistake (`?`)** — Noticeable evaluation drop (1.0 – 2.5).
+    - 🔴 **Blunder (`??`)** — Critical tactical blunder (> 2.5 drop or hung piece).
+    - ❌ **Missed Win (`X`)** — Missed checkmate or game-winning tactic.
+  - **Estimated Performance Rating (CAPS Score):** Accuracy % (e.g. 92.4%) & estimated player performance rating (e.g. "Played like an 1850").
+  - **"Show the Threat" Tool:** Animated arrows revealing opponent's tactical threats after mistakes.
+  - **Interactive "Retry Mistakes":** Key moments navigator allowing players to re-try blundered positions with dynamic hints.
+- **Live "Fun Analysis" Mode:**
+  - In-game evaluation bar and engine score revealed **every 5 moves** (Move 5, 10, 15, 20...).
+  - Audio stings indicating massive evaluation swings without providing continuous engine assistance.
 
 ---
 
-### E. Analysis & Live "Fun Analysis"
-- **Stockfish.wasm Web Worker Analysis:**
-  - Runs 100% on the client browser—**no expensive cloud compute required**.
-  - Live Evaluation Bar (+/- decimal score or `#M` for mate).
-  - Move quality classification:
-    - 💎 **Brilliant** (sacrificial best move)
-    - 🌟 **Great Move**
-    - 🟢 **Best Move**
-    - 🟩 **Excellent**
-    - 🟦 **Good**
-    - 📖 **Book Move**
-    - 🟡 **Inaccuracy**
-    - 🟠 **Mistake**
-    - 🔴 **Blunder**
-    - ❌ **Missed Win**
-  - Game Accuracy % score (e.g., 91.2% accuracy) and performance rating estimate.
-  - Interactive "Retry Mistakes" review mode.
-- **Live "Fun Analysis" Mode:**
-  - During a live game, the evaluation bar and engine score are revealed **every 5 moves** (Move 5, 10, 15, 20...).
-  - Features audio cues (dramatic sting when evaluation swings violently) without providing continuous engine assistance.
+### F. Puzzles, Academy & Training Tools
+- **Puzzles Engine:**
+  - Pull puzzles from the curated open-source Lichess puzzle database (over 3M+ puzzles).
+  - Categorized by themes: Pin, Fork, Skewer, Back Rank, Mate in 1/2/3, Endgame, Opening Traps.
+  - Daily Puzzle with streak tracker & Puzzle Rush / Survival mode.
+- **Puzzle Battle / Puzzle Racer:**
+  - Real-time 3-minute multiplayer sprint where players race head-to-head to solve puzzles with real-time progress bars.
+- **Vision Trainer (Board Coordinates):**
+  - 30-second speed challenge prompting squares (e.g., "e4", "c6", "g7") to build instantaneous board coordinate fluency.
+- **Interactive Board Editor & FEN Setup:**
+  - Drag and drop pieces on an empty canvas to recreate any position, then launch into Analysis or "Play vs AI from this position".
+- **Opening Explorer:**
+  - Interactive opening tree with move frequency, master win rates, and popular continuations.
+- **Interactive "Learn to Play" Tutorials & Strategy Blog:**
+  - Interactive exercises for beginners, piece movement drills, and rich strategy articles.
 
 ---
 
@@ -338,9 +349,15 @@ erDiagram
 
 ## 5. Critical Engineering Safeguards, Bug Mitigations & Security
 
-### 1. Clock Tampering & Anti-Cheat
-- **Risk:** Malicious clients altering clock values or manipulating delta timers.
-- **Solution:** Server maintains authoritative monotonic timestamps (`time.Now()` in Go / server timestamp in Supabase). Client clocks only interpolate for smooth UI rendering; elapsed time is computed on move submission.
+### 1. Clock Tampering, Anti-Cheat & Fair Play
+- **Risk:** Malicious clients altering clock values or using external engines.
+- **Server Monotonic Clocks:** Go server/Supabase maintains authoritative monotonic timestamps (`time.Now()`). Client clocks strictly interpolate.
+- **Fair Play & AFK Rules:**
+  - **Game Abort Grace:** If White plays no move within 20s or Black on move 1, abort with zero rating penalty.
+  - **Auto-Abandonment Countdown:** If a player disconnects or idles for > 45s (or > 50% remaining time), the opponent can claim victory.
+  - **Draw Cooldown:** Prevents draw offer spamming (10 moves / 60s cooldown).
+  - **Session Recovery:** Reconnection grace period (60s) with seamless state recovery via session tokens.
+- **Engine Correlation Flagging:** Flag accounts exhibiting > 98% correlation with Stockfish depth 22 over multiple games with robotic, uniform move intervals.
 - **Move Validation:** Dual-stage validation: Client runs `chess.js` for instant feedback; Server validates the move against the server-side game state before broadcasting.
 
 ### 2. Google AI Studio (Gemini API) Free Tier Quota Protection
