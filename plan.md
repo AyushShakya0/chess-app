@@ -447,3 +447,4 @@ To strictly honor the user's instructions:
    - `feature/boss-mode-and-vip`
 3. Commits will follow Conventional Commits standard (`feat:`, `fix:`, `docs:`, `perf:`).
 4. Pull Requests or explicit merges into `main` only after full verification.
+
