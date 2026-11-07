@@ -101,3 +101,4 @@ export const ChessPiece: React.FC<PieceProps> = ({ type, color, className = "", 
       );
   }
 };
+

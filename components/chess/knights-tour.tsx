@@ -293,3 +293,4 @@ export const KnightsTour: React.FC = () => {
     </div>
   );
 };
+

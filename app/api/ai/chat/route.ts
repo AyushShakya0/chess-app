@@ -53,3 +53,4 @@ Respond with ONE short, funny, in-character sentence (under 18 words) reacting t
     });
   }
 }
+

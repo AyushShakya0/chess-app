@@ -500,3 +500,4 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     </div>
   );
 };
+

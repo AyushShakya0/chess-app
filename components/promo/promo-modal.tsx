@@ -134,3 +134,4 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUn
     </div>
   );
 };
+
