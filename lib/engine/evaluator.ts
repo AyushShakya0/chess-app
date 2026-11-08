@@ -1,4 +1,4 @@
-import { Chess, Square, Move } from "chess.js";
+import { Chess, type Square, type Move } from "chess.js";
 
 // Piece values in centipawns
 const PIECE_VALUES: Record<string, number> = {

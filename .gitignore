@@ -30,6 +30,10 @@ yarn-error.log*
 Thumbs.db
 *.pem
 
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
 # Go build outputs
 bin/
 *.exe
