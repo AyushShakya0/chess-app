@@ -7,13 +7,13 @@ import { sound } from "@/lib/audio/sound";
 
 export type BoardTheme = "classic" | "wood" | "glass" | "neon";
 
-interface Arrow {
+export interface BoardArrow {
   from: Square;
   to: Square;
-  color: string;
+  color?: string;
 }
 
-interface SquareHighlight {
+export interface BoardHighlight {
   square: Square;
   color: string;
 }
@@ -27,7 +27,7 @@ interface QueuedPremove {
 interface ChessboardProps {
   game: Chess;
   orientation?: "white" | "black";
-  onMove?: (move: { from: Square; to: Square; promotion?: string }) => void;
+  onMove?: (move: { from: Square; to: Square; promotion?: string; san?: string }) => boolean | void;
   interactive?: boolean;
   premoveEnabled?: boolean;
   autoPromoteToQueen?: boolean;
@@ -35,6 +35,9 @@ interface ChessboardProps {
   theme?: BoardTheme;
   isCheck?: boolean;
   lastMove?: { from: Square; to: Square } | null;
+  customArrows?: BoardArrow[];
+  customHighlights?: BoardHighlight[];
+  allowedColor?: "w" | "b";
 }
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
@@ -51,15 +54,27 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   theme = "classic",
   isCheck = false,
   lastMove = null,
+  customArrows,
+  customHighlights,
+  allowedColor,
 }) => {
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [legalMoves, setLegalMoves] = useState<Square[]>([]);
   const [draggedSquare, setDraggedSquare] = useState<Square | null>(null);
   const [premove, setPremove] = useState<QueuedPremove | null>(null);
-  const [arrows, setArrows] = useState<Arrow[]>([]);
-  const [highlights, setHighlights] = useState<SquareHighlight[]>([]);
+  const [arrows, setArrows] = useState<BoardArrow[]>([]);
+  const [highlights, setHighlights] = useState<BoardHighlight[]>([]);
   const [rightDragStart, setRightDragStart] = useState<Square | null>(null);
   const [promotionPending, setPromotionPending] = useState<{ from: Square; to: Square } | null>(null);
+
+  const allArrows: BoardArrow[] = [
+    ...arrows,
+    ...(customArrows || []).map((a) => ({ from: a.from, to: a.to, color: a.color || "#22c55e" })),
+  ];
+  const allHighlights: BoardHighlight[] = [
+    ...highlights,
+    ...(customHighlights || []),
+  ];
 
   const boardRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +119,8 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     const piece = game.get(from);
     if (!piece) return false;
 
+    if (allowedColor && piece.color !== allowedColor) return false;
+
     const isCurrentTurn = (piece.color === "w" && game.turn() === "w") || (piece.color === "b" && game.turn() === "b");
 
     // Check if move is pawn promotion
@@ -140,7 +157,13 @@ export const Chessboard: React.FC<ChessboardProps> = ({
           }
 
           if (onMove) {
-            onMove({ from, to, promotion: isPawnPromotion ? promotionChoice : undefined });
+            const allowed = onMove({ from, to, promotion: isPawnPromotion ? promotionChoice : undefined, san: move.san });
+            if (allowed === false) {
+              game.undo();
+              setSelectedSquare(null);
+              setLegalMoves([]);
+              return false;
+            }
           }
 
           // Clear annotations and selections
@@ -153,7 +176,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
       } catch {
         return false;
       }
-    } else if (premoveEnabled) {
+    } else if (premoveEnabled && !allowedColor) {
       // Queue Premove
       setPremove({ from, to, promotion: isPawnPromotion ? "q" : undefined });
       sound.playPremove();
@@ -203,8 +226,9 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     // Select piece
     const piece = game.get(sq);
     if (piece) {
+      if (allowedColor && piece.color !== allowedColor) return;
       const isTurn = (piece.color === "w" && game.turn() === "w") || (piece.color === "b" && game.turn() === "b");
-      if (isTurn || premoveEnabled) {
+      if (isTurn || (premoveEnabled && !allowedColor)) {
         setSelectedSquare(sq);
         const moves = game.moves({ square: sq, verbose: true }) as Move[];
         setLegalMoves(moves.map((m) => m.to as Square));
@@ -219,6 +243,8 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   // Drag & drop handlers
   const handleDragStart = (e: React.DragEvent, sq: Square) => {
     if (!interactive) return;
+    const piece = game.get(sq);
+    if (piece && allowedColor && piece.color !== allowedColor) return;
     setDraggedSquare(sq);
     handleSquareClick(sq);
   };
@@ -312,7 +338,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
             const isLastMove = lastMove && (lastMove.from === square || lastMove.to === square);
             const isPremove = premove && (premove.from === square || premove.to === square);
             const isKingCheck = kingCheckSquare === square;
-            const highlight = highlights.find((h) => h.square === square);
+            const highlight = allHighlights.find((h) => h.square === square);
 
             return (
               <div
@@ -443,7 +469,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
             </marker>
           </defs>
 
-          {arrows.map((arr, idx) => {
+          {allArrows.map((arr, idx) => {
             const start = squareToCoords(arr.from);
             const end = squareToCoords(arr.to);
             const sqSize = 100 / 8; // in percentage

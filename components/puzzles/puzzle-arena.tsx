@@ -2,70 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import { Chess, Square } from "chess.js";
-import { Chessboard, BoardTheme } from "../chess/board";
+import { Chessboard, BoardTheme, BoardArrow, BoardHighlight } from "../chess/board";
 import { sound } from "@/lib/audio/sound";
-import { Zap, Flame, Trophy, CheckCircle2, XCircle, RotateCcw, Lightbulb, ArrowRight } from "lucide-react";
+import { Zap, Flame, RotateCcw, Lightbulb, ArrowRight, CheckCircle2, ShieldAlert } from "lucide-react";
 import confetti from "canvas-confetti";
 
-export interface TacticalPuzzle {
-  id: string;
-  fen: string;
-  moves: string[]; // Solution moves in SAN, e.g. ["Bxf7+", "Kxf7", "Nxe5+"]
-  rating: number;
-  theme: string;
-  description: string;
-}
-
-export const CURATED_PUZZLES: TacticalPuzzle[] = [
-  {
-    id: "puzzle-1",
-    fen: "r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/RNBQ1RK1 w kq - 0 5",
-    moves: ["Bxf7+", "Kxf7", "Nxe5+"],
-    rating: 1150,
-    theme: "Tactical Greek Gift / King Hunt",
-    description: "White sacrifices the bishop to expose the uncastled black king.",
-  },
-  {
-    id: "puzzle-2",
-    fen: "6k1/5ppp/8/8/8/8/1r3PPP/4R1K1 w - - 0 1",
-    moves: ["Re8#"],
-    rating: 800,
-    theme: "Back-Rank Checkmate",
-    description: "The black king is trapped behind its own pawns. Deliver checkmate!",
-  },
-  {
-    id: "puzzle-3",
-    fen: "r1b2rk1/pp3ppp/2n1p3/q2p4/3PnB2/P1P1PN2/2Q2PPP/R3KB1R w KQ - 1 12",
-    moves: ["Bd3", "Nxc3", "O-O"],
-    rating: 1420,
-    theme: "Positional Defense & Pin",
-    description: "Neutralize Black's queen pressure and develop your pieces safely.",
-  },
-  {
-    id: "puzzle-4",
-    fen: "r2qk2r/ppp2ppp/2n5/3p4/1b1Pn1b1/2NB1N2/PPP2PPP/R1BQK2R w KQkq - 4 8",
-    moves: ["O-O", "Bxc3", "bxc3"],
-    rating: 1300,
-    theme: "King Safety & Center Control",
-    description: "Secure king safety while retaining a powerful pawn center.",
-  },
-  {
-    id: "puzzle-5",
-    fen: "r1b1kb1r/pppp1ppp/8/4q3/4n3/8/PPP2PPP/RNBQKB1R w KQkq - 0 7",
-    moves: ["Be2", "Bc5", "O-O"],
-    rating: 1250,
-    theme: "Defensive Pin & Castling",
-    description: "Block the open e-file pin and prepare an immediate castle.",
-  },
-  {
-    id: "puzzle-6",
-    fen: "r3k2r/ppp2ppp/2n5/3q4/1b1Pn1b1/2NB1N2/PPP2PPP/R1BQK2R w KQkq - 0 8",
-    moves: ["O-O", "Bxc3", "bxc3", "O-O"],
-    rating: 1550,
-    theme: "Complex Exchange",
-    description: "Tactical maneuvering to seize active open files.",
-  },
-];
+import { CURATED_PUZZLES, type TacticalPuzzle, getMoveCoordsFromSan } from "@/lib/data/puzzles";
 
 export const PuzzleArena: React.FC = () => {
   const [mode, setMode] = useState<"daily" | "rush">("daily");
@@ -74,16 +16,16 @@ export const PuzzleArena: React.FC = () => {
 
   // The player's assigned color is permanently fixed from the starting FEN turn
   const playerColor: "white" | "black" = new Chess(puzzle.fen).turn() === "w" ? "white" : "black";
+  const playerAllowedColor: "w" | "b" = playerColor === "white" ? "w" : "b";
 
   const [game, setGame] = useState<Chess>(new Chess(puzzle.fen));
-  const [stepFen, setStepFen] = useState<string>(puzzle.fen);
   const [moveStep, setMoveStep] = useState(0);
   const [status, setStatus] = useState<"solving" | "correct" | "retry">("solving");
   const [feedback, setFeedback] = useState<string>(
-    `Your turn as ${playerColor === "white" ? "White" : "Black"}. Find the best continuation!`
+    `Your turn as ${playerColor === "white" ? "White" : "Black"}. Find the winning tactical move!`
   );
   const [isOpponentMoving, setIsOpponentMoving] = useState(false);
-  const [theme, setTheme] = useState<BoardTheme>("classic");
+  const [theme] = useState<BoardTheme>("classic");
   const [showHint, setShowHint] = useState(false);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
 
@@ -96,13 +38,12 @@ export const PuzzleArena: React.FC = () => {
   // Initialize or reset puzzle
   useEffect(() => {
     setGame(new Chess(puzzle.fen));
-    setStepFen(puzzle.fen);
     setMoveStep(0);
     setStatus("solving");
     setIsOpponentMoving(false);
     setShowHint(false);
     setLastMove(null);
-    setFeedback(`Your turn as ${playerColor === "white" ? "White" : "Black"}. Find the best move!`);
+    setFeedback(`Your turn as ${playerColor === "white" ? "White" : "Black"}. Find the winning continuation!`);
   }, [currentIdx, puzzle.fen, playerColor]);
 
   // Puzzle Rush Timer
@@ -137,114 +78,116 @@ export const PuzzleArena: React.FC = () => {
   };
 
   // Handle Player's Interactive Move
-  const handlePlayerMove = (m: { from: Square; to: Square; promotion?: string }) => {
-    if (status !== "solving" || isOpponentMoving) return;
-
-    // Strict Player Turn Check: player can ONLY move when it's their color's turn
-    const isPlayerTurn = game.turn() === (playerColor === "white" ? "w" : "b");
-    if (!isPlayerTurn) return;
+  // Returns true to accept move, false to reject and auto-undo on the board
+  const handlePlayerMove = (m: { from: Square; to: Square; promotion?: string; san?: string }): boolean => {
+    if (status !== "solving" || isOpponentMoving) return false;
 
     const expectedMove = puzzle.moves[moveStep];
-    const testGame = new Chess(game.fen());
+    const playedSan = m.san || "";
 
-    try {
-      const executed = testGame.move({ from: m.from, to: m.to, promotion: m.promotion });
-      if (!executed) return;
+    const matchesSan = playedSan === expectedMove;
+    const matchesUci = `${m.from}${m.to}`.toLowerCase() === expectedMove.toLowerCase();
 
-      const matchesSan = executed.san === expectedMove;
-      const matchesUci = `${m.from}${m.to}`.toLowerCase() === expectedMove.toLowerCase();
+    if (matchesSan || matchesUci) {
+      // Correct move!
+      const nextStep = moveStep + 1;
+      setMoveStep(nextStep);
+      setLastMove({ from: m.from, to: m.to });
+      setShowHint(false);
 
-      if (matchesSan || matchesUci) {
-        // Correct move!
-        const nextStep = moveStep + 1;
-        setGame(new Chess(testGame.fen()));
-        setLastMove({ from: executed.from as Square, to: executed.to as Square });
-        setMoveStep(nextStep);
-
-        if (executed.captured) sound.playCapture();
-        else sound.playMove();
-
-        // Check if finished entire puzzle
-        if (nextStep >= puzzle.moves.length) {
-          setStatus("correct");
-          sound.playVictory();
-          confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
-          setFeedback("🎉 Puzzle Solved! Brilliant calculation!");
-
-          if (mode === "rush") {
-            setRushScore((s) => s + 1);
-            setTimeout(() => {
-              setCurrentIdx((i) => (i + 1) % CURATED_PUZZLES.length);
-            }, 900);
-          }
-        } else {
-          // Automatic opponent response
-          setIsOpponentMoving(true);
-          setFeedback("✓ Best move! Opponent is replying...");
-
-          setTimeout(() => {
-            const oppMoveSan = puzzle.moves[nextStep];
-            try {
-              const oppExec = testGame.move(oppMoveSan);
-              if (oppExec) {
-                setGame(new Chess(testGame.fen()));
-                setStepFen(testGame.fen());
-                setLastMove({ from: oppExec.from as Square, to: oppExec.to as Square });
-                setMoveStep(nextStep + 1);
-
-                if (oppExec.captured) sound.playCapture();
-                else sound.playMove();
-
-                setIsOpponentMoving(false);
-                setFeedback("Opponent replied. Your turn: find the winning follow-up!");
-              }
-            } catch {
-              setIsOpponentMoving(false);
-            }
-          }, 450);
-        }
-      } else {
-        // INCORRECT MOVE:
-        // Do NOT advance game. Do NOT flip board. Play defeat sound.
-        // Alert player and automatically reset board back to stepFen after 600ms so they can try again!
-        sound.playDefeat();
-        setStatus("retry");
-        setFeedback(`❌ Incorrect move! Resetting position... try another move.`);
+      // Check if finished entire puzzle sequence
+      if (nextStep >= puzzle.moves.length) {
+        setStatus("correct");
+        sound.playVictory();
+        confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
+        setFeedback("🎉 Tactical Masterpiece! Puzzle Solved!");
 
         if (mode === "rush") {
-          const newStrikes = rushStrikes + 1;
-          setRushStrikes(newStrikes);
-          if (newStrikes >= 3) {
-            handleRushEnd();
-          }
+          setRushScore((s) => s + 1);
+          setTimeout(() => {
+            setCurrentIdx((i) => (i + 1) % CURATED_PUZZLES.length);
+          }, 900);
         }
+      } else {
+        // Automatic opponent counter-reply
+        setIsOpponentMoving(true);
+        setFeedback("✓ Best move! Opponent is replying...");
 
         setTimeout(() => {
-          setGame(new Chess(stepFen));
-          setStatus("solving");
-          setFeedback(`Find the best move for ${playerColor === "white" ? "White" : "Black"}!`);
-        }, 650);
+          const oppMoveSan = puzzle.moves[nextStep];
+          try {
+            const oppExec = game.move(oppMoveSan);
+            if (oppExec) {
+              setGame(new Chess(game.fen()));
+              setLastMove({ from: oppExec.from as Square, to: oppExec.to as Square });
+              setMoveStep(nextStep + 1);
+
+              if (oppExec.captured) sound.playCapture();
+              else sound.playMove();
+
+              if (game.inCheck()) {
+                setTimeout(() => sound.playCheck(), 100);
+              }
+
+              setIsOpponentMoving(false);
+              setFeedback("Opponent replied! Find the winning follow-up!");
+            }
+          } catch {
+            setIsOpponentMoving(false);
+          }
+        }, 450);
       }
-    } catch {
+      return true;
+    } else {
+      // INCORRECT MOVE:
+      // Return false so board.tsx immediately undos the move!
       sound.playDefeat();
-      setFeedback("Illegal move. Try again!");
+      setStatus("retry");
+      setFeedback(`❌ Incorrect move! That move does not win material or deliver mate. Try again!`);
+
+      if (mode === "rush") {
+        const newStrikes = rushStrikes + 1;
+        setRushStrikes(newStrikes);
+        if (newStrikes >= 3) {
+          handleRushEnd();
+        }
+      }
+
+      setTimeout(() => {
+        setStatus("solving");
+        setFeedback(`Find the best move for ${playerColor === "white" ? "White" : "Black"}!`);
+      }, 700);
+
+      return false;
     }
   };
 
   const retryPuzzle = () => {
     setGame(new Chess(puzzle.fen));
-    setStepFen(puzzle.fen);
     setMoveStep(0);
     setStatus("solving");
     setIsOpponentMoving(false);
     setShowHint(false);
     setLastMove(null);
-    setFeedback(`Board reset. Find the best move!`);
+    setFeedback(`Position reset. Find the best move for ${playerColor === "white" ? "White" : "Black"}!`);
+    sound.playMove();
   };
 
   const nextPuzzle = () => {
     setCurrentIdx((i) => (i + 1) % CURATED_PUZZLES.length);
   };
+
+  // Compute hint arrows and square highlights on the board
+  const hintCoords = showHint ? getMoveCoordsFromSan(game.fen(), puzzle.moves[moveStep]) : null;
+  const customArrows: BoardArrow[] = hintCoords
+    ? [{ from: hintCoords.from, to: hintCoords.to, color: "#22c55e" }]
+    : [];
+  const customHighlights: BoardHighlight[] = hintCoords
+    ? [
+        { square: hintCoords.from, color: "rgba(34, 197, 94, 0.45)" },
+        { square: hintCoords.to, color: "rgba(34, 197, 94, 0.55)" },
+      ]
+    : [];
 
   return (
     <div className="flex flex-col items-center justify-center p-4 max-w-7xl mx-auto w-full">
@@ -256,7 +199,7 @@ export const PuzzleArena: React.FC = () => {
           </div>
           <div>
             <h2 className="text-xl font-black text-white">Tactical Puzzle Training</h2>
-            <p className="text-xs text-slate-400">Solve curated master tactics & elevate calculation</p>
+            <p className="text-xs text-slate-400">Interactive grandmaster puzzles with automated opponent replies</p>
           </div>
         </div>
 
@@ -296,8 +239,9 @@ export const PuzzleArena: React.FC = () => {
               </span>
               <span className="text-xs text-slate-400 font-semibold">{puzzle.theme}</span>
             </div>
-            <span className="text-xs text-slate-200 font-bold px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700">
-              {playerColor === "white" ? "⚪ You play White" : "⚫ You play Black"}
+            <span className="text-xs text-slate-200 font-bold px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700 flex items-center gap-1.5">
+              <span className={`w-2 h-2 rounded-full ${playerColor === "white" ? "bg-white" : "bg-slate-950 border border-slate-400"}`} />
+              {playerColor === "white" ? "You play White" : "You play Black"}
             </span>
           </div>
 
@@ -307,8 +251,11 @@ export const PuzzleArena: React.FC = () => {
             orientation={playerColor}
             onMove={handlePlayerMove}
             interactive={status === "solving" && !isOpponentMoving}
+            allowedColor={playerAllowedColor}
             theme={theme}
             lastMove={lastMove}
+            customArrows={customArrows}
+            customHighlights={customHighlights}
           />
 
           {/* Dynamic Feedback Message Banner */}
@@ -381,7 +328,12 @@ export const PuzzleArena: React.FC = () => {
           ) : (
             /* Daily Puzzle Info */
             <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-5 shadow-xl">
-              <h3 className="text-base font-bold text-white mb-1.5">{puzzle.theme}</h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-base font-bold text-white">{puzzle.title}</h3>
+                <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-blue-600/20 text-blue-400 border border-blue-500/30">
+                  Step {moveStep + 1} / {puzzle.moves.length}
+                </span>
+              </div>
               <p className="text-xs text-slate-400 mb-4">{puzzle.description}</p>
 
               {/* Solved Status & Next Puzzle Button */}
@@ -398,8 +350,12 @@ export const PuzzleArena: React.FC = () => {
               ) : (
                 <div className="space-y-3 mb-4">
                   {showHint ? (
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300">
-                      <strong>Hint:</strong> The first target move is {puzzle.moves[0]}. Look for forced checks or tactical piece sacrifices!
+                    <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300">
+                      <div className="font-bold flex items-center gap-1.5 mb-1 text-emerald-400">
+                        <Lightbulb className="w-4 h-4 text-emerald-400" />
+                        Target Move Arrow Active!
+                      </div>
+                      The best move is <strong>{puzzle.moves[moveStep]}</strong>. Follow the green arrow drawn directly on the board!
                     </div>
                   ) : (
                     <button
@@ -407,7 +363,7 @@ export const PuzzleArena: React.FC = () => {
                       className="w-full py-2 bg-slate-900 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 flex items-center justify-center gap-1.5 transition-colors"
                     >
                       <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
-                      Need a Hint?
+                      Need a Hint? (Draw on Board)
                     </button>
                   )}
                 </div>
