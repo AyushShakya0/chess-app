@@ -71,3 +71,4 @@ export const EvalBar: React.FC<EvalBarProps> = ({
     </div>
   );
 };
+

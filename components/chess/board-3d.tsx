@@ -203,3 +203,4 @@ export const Board3D: React.FC<Board3DProps> = ({ game }) => {
     </div>
   );
 };
+

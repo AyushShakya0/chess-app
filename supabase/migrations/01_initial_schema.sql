@@ -87,3 +87,4 @@ ON public.puzzle_history FOR SELECT USING (auth.uid() = profile_id);
 
 CREATE POLICY "Users can insert puzzle history" 
 ON public.puzzle_history FOR INSERT WITH CHECK (auth.uid() = profile_id);
+

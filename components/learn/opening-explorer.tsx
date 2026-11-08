@@ -302,3 +302,4 @@ export const OpeningExplorer: React.FC = () => {
     </div>
   );
 };
+

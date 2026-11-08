@@ -246,3 +246,4 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
     </div>
   );
 }
+
