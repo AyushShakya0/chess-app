@@ -12,6 +12,10 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        slate: {
+          750: "#223147",
+          850: "#161f30",
+        },
         board: {
           classicLight: "#ebecd0",
           classicDark: "#739552",
