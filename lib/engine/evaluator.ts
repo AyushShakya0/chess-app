@@ -157,6 +157,47 @@ export class ChessEvaluator {
     return { bestMove, score: bestScore };
   }
 
+  // Calibrated bot move picker reflecting actual human ELO rating
+  public static getBotMoveForElo(
+    game: Chess,
+    elo: number,
+    blunderRate: number
+  ): Move | null {
+    const moves = game.moves({ verbose: true }) as Move[];
+    if (moves.length === 0) return null;
+
+    const isMaximizing = game.turn() === "w";
+
+    // 1. Bot intentional blunder check based on blunderRate
+    if (Math.random() < blunderRate) {
+      if (elo <= 600) {
+        // Beginners (400 ELO) pick random moves carelessly
+        return moves[Math.floor(Math.random() * moves.length)];
+      }
+
+      // Intermediate (1200-1800 ELO) blunder by choosing an inaccurate or trappy move
+      const scored = moves.map((m) => {
+        game.move(m);
+        const s = this.evaluatePosition(game);
+        game.undo();
+        return { move: m, score: s };
+      });
+      // Sort ascending if maximizing (weaker first) or descending if minimizing
+      scored.sort((a, b) => (isMaximizing ? a.score - b.score : b.score - a.score));
+      const idx = Math.floor(Math.random() * Math.min(scored.length, 3));
+      return scored[idx]?.move || moves[0];
+    }
+
+    // 2. High-rated play: Minimax calculation based on ELO
+    let depth = 2;
+    if (elo <= 600) depth = 1;
+    else if (elo <= 1400) depth = 2;
+    else depth = 3; // Depth 3 with alpha-beta evaluates 10,000+ positions in ~60ms
+
+    const result = this.getBestMoveAndEval(game, depth);
+    return result.bestMove || moves[0];
+  }
+
   private static minimax(
     game: Chess,
     depth: number,

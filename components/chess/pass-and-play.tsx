@@ -4,15 +4,24 @@ import React, { useState, useEffect } from "react";
 import { Chess, Square } from "chess.js";
 import { Chessboard, BoardTheme } from "./board";
 import { sound } from "@/lib/audio/sound";
-import { RotateCw, SplitSquareVertical, Trophy, RefreshCw, Flag, Handshake } from "lucide-react";
+import { RotateCw, SplitSquareVertical, Trophy, RefreshCw, Flag, Handshake, Dices, EyeOff, ShieldAlert } from "lucide-react";
 import confetti from "canvas-confetti";
 
+export type PassVariant = "standard" | "three-check" | "hidden-queen" | "queen-odds" | "knight-odds";
+
 export const PassAndPlay: React.FC = () => {
+  const [variant, setVariant] = useState<PassVariant>("standard");
   const [game, setGame] = useState<Chess>(new Chess());
   const [viewMode, setViewMode] = useState<"flip" | "dual">("dual");
   const [theme, setTheme] = useState<BoardTheme>("classic");
   const [premoveEnabled, setPremoveEnabled] = useState(false);
   const [autoQueen, setAutoQueen] = useState(true);
+
+  // Variant trackers
+  const [whiteChecks, setWhiteChecks] = useState(0);
+  const [blackChecks, setBlackChecks] = useState(0);
+  const [whiteHiddenPawn, setWhiteHiddenPawn] = useState<Square>("e2");
+  const [blackHiddenPawn, setBlackHiddenPawn] = useState<Square>("e7");
 
   // Time controls
   const [timeControl, setTimeControl] = useState<number>(300); // 5 min default
@@ -83,6 +92,35 @@ export const PassAndPlay: React.FC = () => {
     setLastMove({ from: move.from, to: move.to });
     setMoveHistory(game.history());
 
+    // 3-Check rule verification
+    if (variant === "three-check") {
+      if (game.inCheck()) {
+        if (game.turn() === "b") {
+          // White just delivered check
+          const count = whiteChecks + 1;
+          setWhiteChecks(count);
+          if (count >= 3) {
+            setGameOverMessage("White delivered 3 checks and won the 3-Check match! 🏆");
+            sound.playVictory();
+            confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
+            updateScore("w");
+            return;
+          }
+        } else {
+          // Black just delivered check
+          const count = blackChecks + 1;
+          setBlackChecks(count);
+          if (count >= 3) {
+            setGameOverMessage("Black delivered 3 checks and won the 3-Check match! 🏆");
+            sound.playVictory();
+            confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
+            updateScore("b");
+            return;
+          }
+        }
+      }
+    }
+
     // Check game over states
     if (game.isCheckmate()) {
       const winner = game.turn() === "w" ? "Black" : "White";
@@ -100,15 +138,23 @@ export const PassAndPlay: React.FC = () => {
     }
   };
 
-  const resetGame = () => {
-    const newG = new Chess();
-    setGame(newG);
+  const resetGame = (newVariant: PassVariant = variant) => {
+    setVariant(newVariant);
+    let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    if (newVariant === "queen-odds") {
+      fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 1";
+    } else if (newVariant === "knight-odds") {
+      fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R1BQKBNR w KQkq - 0 1";
+    }
+    setGame(new Chess(fen));
     setWhiteTime(timeControl);
     setBlackTime(timeControl);
     setIsClockRunning(false);
     setGameOverMessage(null);
     setMoveHistory([]);
     setLastMove(null);
+    setWhiteChecks(0);
+    setBlackChecks(0);
   };
 
   const handleResign = (color: "w" | "b") => {
@@ -185,14 +231,61 @@ export const PassAndPlay: React.FC = () => {
           </select>
 
           <button
-            onClick={resetGame}
+            onClick={() => resetGame(variant)}
             className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors border border-slate-600"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Rematch
+            <RefreshCw className="w-4 h-4" />
+            Reset
           </button>
         </div>
       </div>
+
+      {/* Variant Selector Tabs */}
+      <div className="flex flex-wrap items-center justify-between w-full bg-slate-900/90 border border-slate-800 rounded-xl px-4 py-2.5 mb-5 gap-3">
+        <div className="flex items-center gap-2">
+          <Dices className="w-4 h-4 text-purple-400" />
+          <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Game Mode:</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {([
+            { id: "standard", name: "Standard Chess" },
+            { id: "three-check", name: "3-Check Chess" },
+            { id: "hidden-queen", name: "The Hidden Queen" },
+            { id: "queen-odds", name: "Queen Odds" },
+            { id: "knight-odds", name: "Knight Odds" },
+          ] as { id: PassVariant; name: string }[]).map((v) => (
+            <button
+              key={v.id}
+              onClick={() => resetGame(v.id)}
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                variant === v.id
+                  ? "bg-purple-600 text-white shadow-md ring-1 ring-purple-400"
+                  : "bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700"
+              }`}
+            >
+              {v.name}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 3-Check Status Header */}
+      {variant === "three-check" && (
+        <div className="flex items-center justify-center gap-6 w-full max-w-xl mb-4 p-2.5 bg-purple-950/60 border border-purple-800/80 rounded-xl text-xs font-bold">
+          <span className="text-emerald-400">White Checks: {whiteChecks} / 3</span>
+          <span className="text-purple-300 font-extrabold uppercase tracking-wider">Deliver 3 Checks to Win</span>
+          <span className="text-indigo-400">Black Checks: {blackChecks} / 3</span>
+        </div>
+      )}
+
+      {/* Hidden Queen Header */}
+      {variant === "hidden-queen" && (
+        <div className="flex items-center justify-between w-full max-w-xl mb-4 p-2.5 bg-purple-950/60 border border-purple-800/80 rounded-xl text-xs font-semibold text-purple-200">
+          <span>White Secret Queen: <strong>{whiteHiddenPawn.toUpperCase()}</strong></span>
+          <span className="text-purple-400 font-extrabold uppercase tracking-wider">The Hidden Queen Active</span>
+          <span>Black Secret Queen: <strong>{blackHiddenPawn.toUpperCase()}</strong></span>
+        </div>
+      )}
 
       {/* Clocks Bar */}
       <div className="flex items-center justify-between w-full max-w-4xl px-2 mb-3">

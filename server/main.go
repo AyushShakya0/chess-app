@@ -147,7 +147,7 @@ func handleMakeMove(w http.ResponseWriter, r *http.Request) {
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"online","service":"vibechess-go-game-server"}`))
+	w.Write([]byte(`{"status":"online","service":"princhess-go-game-server"}`))
 }
 
 func main() {
@@ -157,7 +157,7 @@ func main() {
 	mux.HandleFunc("/api/room/move", handleMakeMove)
 
 	port := ":8080"
-	log.Printf("♟️ VibeChess Go Realtime Game Server listening on port %s", port)
+	log.Printf("♟️ Prin Chess Go Realtime Game Server listening on port %s", port)
 	if err := http.ListenAndServe(port, mux); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}

@@ -52,7 +52,7 @@ export default function Home() {
       </main>
 
       <footer className="w-full border-t border-slate-900 py-4 text-center text-xs text-slate-500">
-        VibeChess &copy; {new Date().getFullYear()} &bull; Built with Next.js, Supabase, Go & Google AI Studio
+        Prin Chess &copy; {new Date().getFullYear()} &bull; Built with Next.js, Supabase, Go & Google AI Studio
       </footer>
     </div>
   );

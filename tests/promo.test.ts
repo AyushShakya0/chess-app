@@ -17,3 +17,4 @@ test("Promo Code Engine - validate secret 'chess' VIP code", () => {
   assert.deepStrictEqual(validatePromoCode("invalid"), { valid: false, plan: "NONE" });
   assert.deepStrictEqual(validatePromoCode(""), { valid: false, plan: "NONE" });
 });
+

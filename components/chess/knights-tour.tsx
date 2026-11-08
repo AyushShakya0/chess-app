@@ -261,28 +261,32 @@ export const KnightsTour: React.FC = () => {
                 <div
                   key={`${r}-${c}`}
                   onClick={() => handleSquareClick(r, c)}
-                  className={`relative flex items-center justify-center rounded-xl cursor-pointer transition-all duration-150 select-none ${
+                  className={`relative aspect-square w-full h-full min-w-0 min-h-0 flex items-center justify-center rounded-xl cursor-pointer transition-colors duration-150 select-none overflow-hidden ${
                     isCurrent
-                      ? "bg-yellow-400 text-slate-950 ring-4 ring-yellow-400/50 scale-105 z-20 shadow-xl"
+                      ? "bg-yellow-400 text-slate-950 ring-2 ring-yellow-400/80 shadow-md z-10"
                       : isVisited
                       ? "bg-slate-700/90 text-slate-200 border border-slate-600"
                       : isLegal
-                      ? "bg-blue-600/40 hover:bg-blue-500/60 text-white ring-2 ring-blue-400/80 animate-pulse"
+                      ? "bg-blue-600/40 hover:bg-blue-500/60 text-white ring-2 ring-blue-400/80"
                       : isLight
                       ? "bg-slate-800/80 hover:bg-slate-700/80 text-slate-400"
                       : "bg-slate-850 hover:bg-slate-800 text-slate-400"
                   }`}
                 >
                   {isCurrent ? (
-                    <div className="animate-piece-drop">
-                      <ChessPiece type="n" color="w" size={38} />
+                    <div className="flex items-center justify-center w-full h-full p-1 animate-piece-drop">
+                      <ChessPiece
+                        type="n"
+                        color="w"
+                        size={boardSize === 8 ? 24 : boardSize === 7 ? 28 : boardSize === 6 ? 32 : 36}
+                      />
                     </div>
                   ) : isVisited ? (
                     <span className="font-mono font-black text-xs sm:text-sm text-emerald-400">
                       {visitIndex + 1}
                     </span>
                   ) : isLegal ? (
-                    <div className="w-3.5 h-3.5 rounded-full bg-blue-400/90" />
+                    <div className="w-3 h-3 rounded-full bg-blue-400/90" />
                   ) : null}
                 </div>
               );

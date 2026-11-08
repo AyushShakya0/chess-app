@@ -45,3 +45,4 @@ test("Handicap Variants - Initial FEN construction", () => {
   const queenGame = new Chess(queenOddsFen);
   assert.strictEqual(queenGame.get("d1"), undefined, "Square d1 should be empty in Queen odds");
 });
+

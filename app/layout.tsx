@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "VibeChess - Modern Grandmaster Chess Platform",
+  title: "Prin Chess - Grandmaster Chess Platform",
   description: "Next-generation chess platform featuring celebrity AI bots, pass & play dual boards, boss mode, tactical training, and real-time engine analysis.",
 };
 

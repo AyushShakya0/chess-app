@@ -44,3 +44,14 @@ test("ChessEvaluator - analyzeFullGame accuracy computation", () => {
   assert.ok(analysis.blackAccuracy >= 50 && analysis.blackAccuracy <= 100, `Black accuracy: ${analysis.blackAccuracy}`);
   assert.ok(analysis.whiteStats.book > 0, "First moves should count towards opening book");
 });
+
+test("ChessEvaluator - getBotMoveForElo calibrated play", () => {
+  const game = new Chess();
+  // Noob (400 ELO) move
+  const noobMove = ChessEvaluator.getBotMoveForElo(game, 400, 0.65);
+  assert.ok(noobMove !== null, "Noob bot should return a legal move");
+
+  // Magnus (2850 ELO) move
+  const magnusMove = ChessEvaluator.getBotMoveForElo(game, 2850, 0.0);
+  assert.ok(magnusMove !== null, "Magnus bot should return an optimal move");
+});

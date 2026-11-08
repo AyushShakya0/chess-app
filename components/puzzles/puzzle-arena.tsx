@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Chess, Square, Move } from "chess.js";
+import { Chess, Square } from "chess.js";
 import { Chessboard, BoardTheme } from "../chess/board";
 import { sound } from "@/lib/audio/sound";
 import { Zap, Flame, Trophy, CheckCircle2, XCircle, RotateCcw, Lightbulb, ArrowRight } from "lucide-react";
@@ -10,7 +10,7 @@ import confetti from "canvas-confetti";
 export interface TacticalPuzzle {
   id: string;
   fen: string;
-  moves: string[]; // Solution moves in UCI or SAN, e.g. ["Nxf7", "Kxf7", "Qxe6#"]
+  moves: string[]; // Solution moves in SAN, e.g. ["Bxf7+", "Kxf7", "Nxe5+"]
   rating: number;
   theme: string;
   description: string;
@@ -72,11 +72,20 @@ export const PuzzleArena: React.FC = () => {
   const [currentIdx, setCurrentIdx] = useState(0);
   const puzzle = CURATED_PUZZLES[currentIdx % CURATED_PUZZLES.length];
 
+  // The player's assigned color is permanently fixed from the starting FEN turn
+  const playerColor: "white" | "black" = new Chess(puzzle.fen).turn() === "w" ? "white" : "black";
+
   const [game, setGame] = useState<Chess>(new Chess(puzzle.fen));
+  const [stepFen, setStepFen] = useState<string>(puzzle.fen);
   const [moveStep, setMoveStep] = useState(0);
-  const [status, setStatus] = useState<"solving" | "correct" | "failed">("solving");
+  const [status, setStatus] = useState<"solving" | "correct" | "retry">("solving");
+  const [feedback, setFeedback] = useState<string>(
+    `Your turn as ${playerColor === "white" ? "White" : "Black"}. Find the best continuation!`
+  );
+  const [isOpponentMoving, setIsOpponentMoving] = useState(false);
   const [theme, setTheme] = useState<BoardTheme>("classic");
   const [showHint, setShowHint] = useState(false);
+  const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
 
   // Puzzle Rush States
   const [rushScore, setRushScore] = useState(0);
@@ -87,10 +96,14 @@ export const PuzzleArena: React.FC = () => {
   // Initialize or reset puzzle
   useEffect(() => {
     setGame(new Chess(puzzle.fen));
+    setStepFen(puzzle.fen);
     setMoveStep(0);
     setStatus("solving");
+    setIsOpponentMoving(false);
     setShowHint(false);
-  }, [currentIdx, puzzle]);
+    setLastMove(null);
+    setFeedback(`Your turn as ${playerColor === "white" ? "White" : "Black"}. Find the best move!`);
+  }, [currentIdx, puzzle.fen, playerColor]);
 
   // Puzzle Rush Timer
   useEffect(() => {
@@ -123,56 +136,81 @@ export const PuzzleArena: React.FC = () => {
     setStatus("solving");
   };
 
+  // Handle Player's Interactive Move
   const handlePlayerMove = (m: { from: Square; to: Square; promotion?: string }) => {
-    if (status !== "solving") return;
+    if (status !== "solving" || isOpponentMoving) return;
+
+    // Strict Player Turn Check: player can ONLY move when it's their color's turn
+    const isPlayerTurn = game.turn() === (playerColor === "white" ? "w" : "b");
+    if (!isPlayerTurn) return;
 
     const expectedMove = puzzle.moves[moveStep];
     const testGame = new Chess(game.fen());
 
     try {
-      // Find move notation
       const executed = testGame.move({ from: m.from, to: m.to, promotion: m.promotion });
       if (!executed) return;
 
       const matchesSan = executed.san === expectedMove;
-      const matchesUci = `${m.from}${m.to}` === expectedMove.toLowerCase();
+      const matchesUci = `${m.from}${m.to}`.toLowerCase() === expectedMove.toLowerCase();
 
       if (matchesSan || matchesUci) {
         // Correct move!
         const nextStep = moveStep + 1;
         setGame(new Chess(testGame.fen()));
+        setLastMove({ from: executed.from as Square, to: executed.to as Square });
         setMoveStep(nextStep);
 
+        if (executed.captured) sound.playCapture();
+        else sound.playMove();
+
+        // Check if finished entire puzzle
         if (nextStep >= puzzle.moves.length) {
-          // Solved whole puzzle!
           setStatus("correct");
           sound.playVictory();
-          confetti({ particleCount: 120, spread: 70, origin: { y: 0.6 } });
+          confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
+          setFeedback("🎉 Puzzle Solved! Brilliant calculation!");
 
           if (mode === "rush") {
             setRushScore((s) => s + 1);
             setTimeout(() => {
               setCurrentIdx((i) => (i + 1) % CURATED_PUZZLES.length);
-            }, 800);
+            }, 900);
           }
         } else {
-          // Play opponent's automatic response
+          // Automatic opponent response
+          setIsOpponentMoving(true);
+          setFeedback("✓ Best move! Opponent is replying...");
+
           setTimeout(() => {
-            const oppMove = puzzle.moves[nextStep];
+            const oppMoveSan = puzzle.moves[nextStep];
             try {
-              testGame.move(oppMove);
-              setGame(new Chess(testGame.fen()));
-              setMoveStep(nextStep + 1);
-              sound.playMove();
+              const oppExec = testGame.move(oppMoveSan);
+              if (oppExec) {
+                setGame(new Chess(testGame.fen()));
+                setStepFen(testGame.fen());
+                setLastMove({ from: oppExec.from as Square, to: oppExec.to as Square });
+                setMoveStep(nextStep + 1);
+
+                if (oppExec.captured) sound.playCapture();
+                else sound.playMove();
+
+                setIsOpponentMoving(false);
+                setFeedback("Opponent replied. Your turn: find the winning follow-up!");
+              }
             } catch {
-              // Ignore
+              setIsOpponentMoving(false);
             }
           }, 450);
         }
       } else {
-        // Incorrect move
-        setStatus("failed");
+        // INCORRECT MOVE:
+        // Do NOT advance game. Do NOT flip board. Play defeat sound.
+        // Alert player and automatically reset board back to stepFen after 600ms so they can try again!
         sound.playDefeat();
+        setStatus("retry");
+        setFeedback(`❌ Incorrect move! Resetting position... try another move.`);
+
         if (mode === "rush") {
           const newStrikes = rushStrikes + 1;
           setRushStrikes(newStrikes);
@@ -180,18 +218,28 @@ export const PuzzleArena: React.FC = () => {
             handleRushEnd();
           }
         }
+
+        setTimeout(() => {
+          setGame(new Chess(stepFen));
+          setStatus("solving");
+          setFeedback(`Find the best move for ${playerColor === "white" ? "White" : "Black"}!`);
+        }, 650);
       }
     } catch {
-      setStatus("failed");
       sound.playDefeat();
+      setFeedback("Illegal move. Try again!");
     }
   };
 
   const retryPuzzle = () => {
     setGame(new Chess(puzzle.fen));
+    setStepFen(puzzle.fen);
     setMoveStep(0);
     setStatus("solving");
+    setIsOpponentMoving(false);
     setShowHint(false);
+    setLastMove(null);
+    setFeedback(`Board reset. Find the best move!`);
   };
 
   const nextPuzzle = () => {
@@ -208,7 +256,7 @@ export const PuzzleArena: React.FC = () => {
           </div>
           <div>
             <h2 className="text-xl font-black text-white">Tactical Puzzle Training</h2>
-            <p className="text-xs text-slate-400">Solve daily tactics and boost your calculation</p>
+            <p className="text-xs text-slate-400">Solve curated master tactics & elevate calculation</p>
           </div>
         </div>
 
@@ -248,18 +296,37 @@ export const PuzzleArena: React.FC = () => {
               </span>
               <span className="text-xs text-slate-400 font-semibold">{puzzle.theme}</span>
             </div>
-            <span className="text-xs text-slate-300 font-bold">
-              {game.turn() === "w" ? "⚪ White to move" : "⚫ Black to move"}
+            <span className="text-xs text-slate-200 font-bold px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700">
+              {playerColor === "white" ? "⚪ You play White" : "⚫ You play Black"}
             </span>
           </div>
 
+          {/* Board Orientation is strictly locked to playerColor - never flips! */}
           <Chessboard
             game={game}
-            orientation={game.turn() === "w" ? "white" : "black"}
+            orientation={playerColor}
             onMove={handlePlayerMove}
-            interactive={status === "solving"}
+            interactive={status === "solving" && !isOpponentMoving}
             theme={theme}
+            lastMove={lastMove}
           />
+
+          {/* Dynamic Feedback Message Banner */}
+          <div className="w-full max-w-[600px] mt-3">
+            <div
+              className={`p-3.5 rounded-xl text-center text-xs sm:text-sm font-bold border transition-all ${
+                status === "correct"
+                  ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-lg"
+                  : status === "retry"
+                  ? "bg-red-500/20 text-red-300 border-red-500/50 animate-shake"
+                  : isOpponentMoving
+                  ? "bg-blue-500/20 text-blue-300 border-blue-500/40 animate-pulse"
+                  : "bg-slate-800/80 text-slate-200 border-slate-700"
+              }`}
+            >
+              {feedback}
+            </div>
+          </div>
         </div>
 
         {/* Right: Info, Rush Stats & Actions */}
@@ -307,7 +374,7 @@ export const PuzzleArena: React.FC = () => {
                 </button>
               ) : (
                 <p className="text-xs text-center text-slate-400">
-                  Keep solving as many puzzles as possible before time runs out!
+                  Solve as many tactical puzzles as you can before time or strikes expire!
                 </p>
               )}
             </div>
@@ -317,54 +384,49 @@ export const PuzzleArena: React.FC = () => {
               <h3 className="text-base font-bold text-white mb-1.5">{puzzle.theme}</h3>
               <p className="text-xs text-slate-400 mb-4">{puzzle.description}</p>
 
-              {/* Status Banner */}
-              {status === "correct" && (
-                <div className="bg-emerald-500/20 border border-emerald-500/60 text-emerald-300 p-3 rounded-xl flex items-center gap-2 mb-4 text-xs font-bold animate-bounce">
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                  Brilliant! Puzzle Solved Successfully!
-                </div>
-              )}
-
-              {status === "failed" && (
-                <div className="bg-red-500/20 border border-red-500/60 text-red-300 p-3 rounded-xl flex items-center gap-2 mb-4 text-xs font-bold">
-                  <XCircle className="w-4 h-4 shrink-0 text-red-400" />
-                  Incorrect move. Try again!
-                </div>
-              )}
-
-              {/* Hint Box */}
-              {showHint && (
-                <div className="bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 p-3 rounded-xl mb-4 text-xs">
-                  💡 Hint: Look for tactical checks or piece captures on the f7 or e8 squares!
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="space-y-2">
-                <div className="flex gap-2">
+              {/* Solved Status & Next Puzzle Button */}
+              {status === "correct" ? (
+                <div className="mb-4">
                   <button
-                    onClick={retryPuzzle}
-                    className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-xl text-xs font-bold transition-colors"
+                    onClick={nextPuzzle}
+                    className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-bold rounded-xl text-sm shadow-lg transition-all flex items-center justify-center gap-2"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Retry
-                  </button>
-
-                  <button
-                    onClick={() => setShowHint(true)}
-                    className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-xl text-xs font-bold transition-colors"
-                  >
-                    <Lightbulb className="w-3.5 h-3.5 text-yellow-400" />
-                    Hint
+                    <span>Next Puzzle</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
+              ) : (
+                <div className="space-y-3 mb-4">
+                  {showHint ? (
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300">
+                      <strong>Hint:</strong> The first target move is {puzzle.moves[0]}. Look for forced checks or tactical piece sacrifices!
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowHint(true)}
+                      className="w-full py-2 bg-slate-900 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <Lightbulb className="w-3.5 h-3.5 text-amber-400" />
+                      Need a Hint?
+                    </button>
+                  )}
+                </div>
+              )}
 
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-700/60">
+                <button
+                  onClick={retryPuzzle}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-white py-2 rounded-xl text-xs font-semibold transition-colors border border-slate-600"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset Position
+                </button>
                 <button
                   onClick={nextPuzzle}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-xs font-bold shadow-lg transition-colors"
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl text-xs font-semibold transition-colors shadow-md"
                 >
-                  <span>Next Puzzle</span>
-                  <ArrowRight className="w-4 h-4" />
+                  Skip Puzzle
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
@@ -374,4 +436,3 @@ export const PuzzleArena: React.FC = () => {
     </div>
   );
 };
-

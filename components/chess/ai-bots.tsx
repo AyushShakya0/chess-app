@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Chess, Square, Move } from "chess.js";
 import { Chessboard, BoardTheme } from "./board";
 import { sound } from "@/lib/audio/sound";
+import { ChessEvaluator } from "@/lib/engine/evaluator";
 import { Bot, MessageSquare, RefreshCw, Trophy, Flag, Zap, Sparkles } from "lucide-react";
 import confetti from "canvas-confetti";
 
@@ -128,62 +129,72 @@ export const AiBotsPlay: React.FC = () => {
   const [lastBotRemark, setLastBotRemark] = useState<string>("");
   const [gameOver, setGameOver] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
+  const [switchedMidGame, setSwitchedMidGame] = useState<string | null>(null);
 
-  // Greet on bot change
+  // Initial bot greeting
   useEffect(() => {
     const greeting = getRandomLine(selectedBot.dialogs.start);
     setLastBotRemark(greeting);
     setChatLog([{ sender: "bot", text: greeting }]);
-    resetGame();
-  }, [selectedBot]);
+  }, []);
 
   const getRandomLine = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+
+  // Switch bot cleanly without resetting the board mid-game
+  const handleSelectBot = (newBot: BotPersona) => {
+    if (newBot.id === selectedBot.id) return;
+    setSelectedBot(newBot);
+
+    const isGameActive = game.history().length > 0 && !gameOver;
+    if (isGameActive) {
+      const takeoverMsg = `⚡ ${newBot.name} (${newBot.elo} ELO) has stepped in to take over the board! Board position preserved.`;
+      setSwitchedMidGame(newBot.name);
+      setLastBotRemark(`I'm taking over as Black! Let's see your skills.`);
+      setChatLog((prev) => [...prev, { sender: "bot", text: takeoverMsg }]);
+      setTimeout(() => setSwitchedMidGame(null), 3500);
+
+      // If it's Black's turn to move, trigger the new bot
+      if (game.turn() === "b") {
+        setTimeout(() => triggerBotMove(game, newBot), 400);
+      }
+    } else {
+      const greeting = getRandomLine(newBot.dialogs.start);
+      setLastBotRemark(greeting);
+      setChatLog([{ sender: "bot", text: greeting }]);
+      resetGame();
+    }
+  };
 
   const resetGame = () => {
     setGame(new Chess());
     setIsThinking(false);
     setGameOver(null);
     setLastMove(null);
+    setSwitchedMidGame(null);
+    const greeting = getRandomLine(selectedBot.dialogs.start);
+    setLastBotRemark(greeting);
   };
 
-  // Bot makes a move
-  const triggerBotMove = async (currentGame: Chess) => {
+  // Bot makes a move using calibrated ELO engine
+  const triggerBotMove = async (currentGame: Chess, botOverride?: BotPersona) => {
     if (currentGame.isGameOver()) return;
     setIsThinking(true);
 
-    // Dynamic delay for humanized bot feel (400ms - 900ms)
-    await new Promise((r) => setTimeout(r, 600));
+    const activeBot = botOverride || selectedBot;
 
-    const moves = currentGame.moves({ verbose: true }) as Move[];
-    if (moves.length === 0) {
+    // Dynamic delay for humanized bot feel (400ms - 800ms)
+    await new Promise((r) => setTimeout(r, 550));
+
+    // Get move computed by ChessEvaluator calibrated for this bot's ELO
+    const chosenMove = ChessEvaluator.getBotMoveForElo(
+      currentGame,
+      activeBot.elo,
+      activeBot.blunderRate
+    );
+
+    if (!chosenMove) {
       setIsThinking(false);
       return;
-    }
-
-    let chosenMove: Move;
-
-    // Check if bot intentionally blunders according to blunderRate
-    const shouldBlunder = Math.random() < selectedBot.blunderRate;
-
-    if (shouldBlunder) {
-      // Pick random legal move
-      chosenMove = moves[Math.floor(Math.random() * moves.length)];
-    } else {
-      // Prioritize captures and checks, then random
-      const captures = moves.filter((m) => m.captured);
-      const checks = moves.filter((m) => {
-        const testG = new Chess(currentGame.fen());
-        testG.move(m);
-        return testG.inCheck();
-      });
-
-      if (checks.length > 0 && Math.random() < 0.7) {
-        chosenMove = checks[Math.floor(Math.random() * checks.length)];
-      } else if (captures.length > 0 && Math.random() < 0.6) {
-        chosenMove = captures[Math.floor(Math.random() * captures.length)];
-      } else {
-        chosenMove = moves[Math.floor(Math.random() * moves.length)];
-      }
     }
 
     try {
@@ -200,7 +211,7 @@ export const AiBotsPlay: React.FC = () => {
         setGame(new Chess(currentGame.fen()));
 
         // Trigger bot dialogue
-        triggerBotReaction(executed, currentGame);
+        triggerBotReaction(executed, currentGame, activeBot);
       }
     } catch {
       // Ignore move error
@@ -210,21 +221,21 @@ export const AiBotsPlay: React.FC = () => {
   };
 
   // Bot Reaction (Gemini API with Fallback)
-  const triggerBotReaction = async (move: Move, currentGame: Chess) => {
+  const triggerBotReaction = async (move: Move, currentGame: Chess, activeBot: BotPersona = selectedBot) => {
     let event = "normal move";
-    let fallbackText = getRandomLine(selectedBot.dialogs.goodMove);
+    let fallbackText = getRandomLine(activeBot.dialogs.goodMove);
 
     if (currentGame.isCheckmate()) {
       event = "bot won by checkmate";
-      fallbackText = getRandomLine(selectedBot.dialogs.win);
-      setGameOver(`${selectedBot.name} won by Checkmate!`);
+      fallbackText = getRandomLine(activeBot.dialogs.win);
+      setGameOver(`${activeBot.name} won by Checkmate!`);
       sound.playDefeat();
     } else if (currentGame.inCheck()) {
       event = "bot checked opponent king";
-      fallbackText = getRandomLine(selectedBot.dialogs.check);
+      fallbackText = getRandomLine(activeBot.dialogs.check);
     } else if (move.captured) {
       event = `bot captured player's ${move.captured}`;
-      fallbackText = getRandomLine(selectedBot.dialogs.blunder);
+      fallbackText = getRandomLine(activeBot.dialogs.blunder);
     }
 
     // Attempt Gemini Flash API call
@@ -233,7 +244,7 @@ export const AiBotsPlay: React.FC = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          botName: selectedBot.name,
+          botName: activeBot.name,
           event,
           lastMove: move.san,
           pgn: currentGame.history().slice(-6).join(" "),
@@ -284,7 +295,7 @@ export const AiBotsPlay: React.FC = () => {
           {BOT_CATALOG.map((bot) => (
             <button
               key={bot.id}
-              onClick={() => setSelectedBot(bot)}
+              onClick={() => handleSelectBot(bot)}
               className={`flex flex-col items-center text-center p-3 rounded-xl border transition-all ${
                 selectedBot.id === bot.id
                   ? "bg-blue-600/25 border-blue-500 shadow-lg scale-102 ring-2 ring-blue-500/50"
@@ -312,20 +323,37 @@ export const AiBotsPlay: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <span className="text-base font-bold text-white">{selectedBot.name}</span>
                   <span className="text-xs font-mono px-2 py-0.5 bg-slate-800 text-emerald-400 border border-slate-700 rounded-md">
-                    {selectedBot.elo}
+                    {selectedBot.elo} ELO
                   </span>
                 </div>
                 <span className="text-xs text-slate-400">{selectedBot.title}</span>
               </div>
             </div>
 
-            {isThinking && (
-              <div className="flex items-center gap-1.5 text-xs text-blue-400 font-medium animate-pulse">
-                <Bot className="w-4 h-4" />
-                Thinking...
-              </div>
-            )}
+            <div className="flex items-center gap-3">
+              {isThinking && (
+                <div className="flex items-center gap-1.5 text-xs text-blue-400 font-medium animate-pulse">
+                  <Bot className="w-4 h-4" />
+                  Calculating...
+                </div>
+              )}
+              <button
+                onClick={resetGame}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+                title="Start a fresh match"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                New Game
+              </button>
+            </div>
           </div>
+
+          {switchedMidGame && (
+            <div className="w-full max-w-[600px] mb-3 p-2.5 bg-blue-500/20 border border-blue-500/40 rounded-xl text-xs font-bold text-blue-300 text-center animate-fade-in flex items-center justify-center gap-2">
+              <Zap className="w-4 h-4 text-blue-400" />
+              Opponent switched to {switchedMidGame} (Board preserved!)
+            </div>
+          )}
 
           <Chessboard
             game={game}

@@ -12,6 +12,8 @@ export const BossMode: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [challengeSent, setChallengeSent] = useState<boolean>(false);
   const [inviteLink, setInviteLink] = useState("");
+  const [mailtoLink, setMailtoLink] = useState("");
+  const [emailDelivered, setEmailDelivered] = useState(false);
   const [copied, setCopied] = useState(false);
 
   // Web Audio Procedural Boss Theme Synthesizer
@@ -108,6 +110,8 @@ export const BossMode: React.FC = () => {
 
       const data = await res.json();
       setInviteLink(data.inviteLink);
+      setMailtoLink(data.mailtoLink || "");
+      setEmailDelivered(data.emailDelivered || false);
       setChallengeSent(true);
       sound.playCheck();
     } catch {
@@ -168,11 +172,33 @@ export const BossMode: React.FC = () => {
               <Skull className="w-7 h-7 animate-bounce" />
             </div>
 
-            <h3 className="text-lg font-bold text-white mb-1">Challenge Dispatched to Ayush!</h3>
-            <p className="text-xs text-slate-400 mb-4">
-              An invitation alert with your challenge has been dispatched to{" "}
-              <span className="text-red-300 font-mono">shakyaayush82@gmail.com</span>.
-            </p>
+            <h3 className="text-lg font-bold text-white mb-1">Challenge Issued to Boss Ayush!</h3>
+            
+            {emailDelivered ? (
+              <div className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 p-3 rounded-xl text-xs font-semibold mb-4 flex items-center justify-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Live notification email successfully dispatched to <strong>shakyaayush82@gmail.com</strong>!</span>
+              </div>
+            ) : (
+              <div className="bg-amber-500/20 text-amber-300 border border-amber-500/40 p-3.5 rounded-xl text-xs mb-4 text-left">
+                <div className="font-bold flex items-center gap-1.5 mb-1 text-amber-300">
+                  <Mail className="w-4 h-4 text-amber-400" />
+                  <span>Direct Email Dispatch Ready:</span>
+                </div>
+                <p className="text-[11px] text-amber-200/90 mb-2.5">
+                  Click below to open your email client and send this challenge alert directly to Ayush Shakya:
+                </p>
+                {mailtoLink && (
+                  <a
+                    href={mailtoLink}
+                    className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold rounded-lg text-xs transition-all shadow"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    Open Email App to Send to Ayush
+                  </a>
+                )}
+              </div>
+            )}
 
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2 mb-4">
               <span className="text-xs font-mono text-slate-300 truncate">{inviteLink}</span>

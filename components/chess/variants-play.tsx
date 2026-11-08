@@ -204,22 +204,47 @@ export const VariantsPlay: React.FC = () => {
                   One of your starting pawns is secretly a Queen in disguise! The opponent cannot tell which pawn it is until it moves with Queen powers or captures.
                 </p>
                 {hiddenQueenPhase === "selecting" ? (
-                  <div className="bg-slate-900 border border-purple-500/40 p-3 rounded-xl">
-                    <span className="font-bold text-purple-300 block mb-1">Secret Selection:</span>
-                    <span className="text-[11px] text-slate-400">
-                      White designated pawn: <strong>{whiteHiddenPawn?.toUpperCase()}</strong>
+                  <div className="bg-slate-900 border border-purple-500/40 p-3.5 rounded-xl">
+                    <span className="font-bold text-purple-300 block mb-1">Select Your Secret Queen Pawn:</span>
+                    <span className="text-[11px] text-slate-400 block mb-2">
+                      Click any pawn below to disguise as your Secret Queen:
                     </span>
+                    <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 mb-3">
+                      {(["a2", "b2", "c2", "d2", "e2", "f2", "g2", "h2"] as Square[]).map((sq) => (
+                        <button
+                          key={sq}
+                          onClick={() => setWhiteHiddenPawn(sq)}
+                          className={`py-1.5 px-2 rounded-lg font-mono text-xs font-bold transition-all text-center ${
+                            whiteHiddenPawn === sq
+                              ? "bg-purple-600 text-white shadow-md ring-2 ring-purple-400 scale-105"
+                              : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                          }`}
+                        >
+                          {sq.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
                     <button
                       onClick={() => setHiddenQueenPhase("playing")}
-                      className="mt-2.5 w-full py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold text-xs"
+                      className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg font-bold text-xs shadow-md transition-all"
                     >
-                      Lock In Secret Queen & Play
+                      Lock In {whiteHiddenPawn?.toUpperCase()} as Secret Queen & Start Match
                     </button>
                   </div>
                 ) : (
-                  <div className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 p-2.5 rounded-xl font-bold text-xs flex items-center gap-2">
-                    <Check className="w-4 h-4 shrink-0" />
-                    Secret Queen is active on the board!
+                  <div className="space-y-2">
+                    <div className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 p-2.5 rounded-xl font-bold text-xs flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Check className="w-4 h-4 shrink-0" />
+                        Secret Queen active on <strong>{whiteHiddenPawn?.toUpperCase()}</strong>!
+                      </div>
+                      <button
+                        onClick={() => setHiddenQueenPhase("selecting")}
+                        className="text-[10px] text-purple-300 hover:text-white underline font-semibold"
+                      >
+                        Change
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

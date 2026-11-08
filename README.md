@@ -1,4 +1,4 @@
-# ♟️ VibeChess - Grandmaster Chess Platform
+# ♟️ Prin Chess - Grandmaster Chess Platform
 
 > A lightning-fast, feature-packed modern chess web application with AI celebrity banter, 3D interactive boards, dual-screen pass & play, live game review, and high-concurrency multiplayer.
 
@@ -238,3 +238,4 @@ CMD ["./server"]
 - **Creator & Lead Developer:** Ayush Shakya ([@AyushShakya0](https://github.com/AyushShakya0))
 - **Email:** `shakyaayush82@gmail.com`
 - **License:** MIT
+

@@ -22,12 +22,40 @@ export const Navbar: React.FC<NavbarProps> = ({ activeTab, setActiveTab, is3D, s
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 h-16">
           {/* Logo */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab("bots")}>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-black text-xl text-white shadow-lg shadow-blue-500/20">
-              ♟
+            <div className="relative w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/25 border border-amber-400/30">
+              {/* Queen with Crown SVG */}
+              <svg viewBox="0 0 40 40" fill="none" className="w-7 h-7 text-white drop-shadow-md">
+                {/* Crown Diadem */}
+                <path
+                  d="M10 16L13 22H27L30 16L24 19L20 12L16 19L10 16Z"
+                  fill="#FBBF24"
+                  stroke="#78350F"
+                  strokeWidth="1"
+                />
+                {/* Crown Jewels */}
+                <circle cx="10" cy="15" r="1.5" fill="#F87171" />
+                <circle cx="16" cy="18" r="1.2" fill="#60A5FA" />
+                <circle cx="20" cy="11.5" r="1.8" fill="#FBBF24" />
+                <circle cx="24" cy="18" r="1.2" fill="#60A5FA" />
+                <circle cx="30" cy="15" r="1.5" fill="#F87171" />
+                {/* Queen Bust / Body */}
+                <path
+                  d="M13 23C13 23 15 25 20 25C25 25 27 23 27 23L28 32H12L13 23Z"
+                  fill="#FFFFFF"
+                />
+                {/* Royal Robe trim */}
+                <path
+                  d="M11 32C11 31 14 30 20 30C26 30 29 31 29 32H11Z"
+                  fill="#F59E0B"
+                />
+              </svg>
             </div>
             <div>
-              <span className="font-black text-lg text-white tracking-tight flex items-center gap-1.5">
-                VIBE<span className="text-blue-500">CHESS</span>
+              <span className="font-black text-xl text-white tracking-tight flex items-center gap-1.5">
+                PRIN<span className="text-amber-400">CHESS</span>
+              </span>
+              <span className="text-[10px] text-amber-300/80 font-bold tracking-wider uppercase block -mt-1">
+                Grandmaster Suite
               </span>
             </div>
           </div>
