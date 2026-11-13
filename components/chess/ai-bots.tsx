@@ -5,8 +5,10 @@ import { Chess, Square, Move } from "chess.js";
 import { Chessboard, BoardTheme } from "./board";
 import { sound } from "@/lib/audio/sound";
 import { ChessEvaluator } from "@/lib/engine/evaluator";
-import { Bot, MessageSquare, RefreshCw, Trophy, Flag, Zap, Sparkles } from "lucide-react";
+import { Bot, MessageSquare, RefreshCw, Trophy, Flag, Zap, Sparkles, Settings } from "lucide-react";
 import confetti from "canvas-confetti";
+import { EvaluationBar, EvalBarMode } from "./evaluation-bar";
+import { SettingsModal } from "./settings-modal";
 
 export interface BotPersona {
   id: string;
@@ -89,7 +91,7 @@ export const BOT_CATALOG: BotPersona[] = [
     avatar: "⚡",
     title: "Super GM & Streamer",
     description: "Literally takes takes takes. Premoves everything.",
-    depth: 4,
+    depth: 6,
     blunderRate: 0.03,
     dialogs: {
       start: ["Alright chat, let's win this quickly.", "Literally takes takes takes.", "I literally don't care."],
@@ -107,7 +109,7 @@ export const BOT_CATALOG: BotPersona[] = [
     avatar: "👑",
     title: "World Champion",
     description: "Positionally flawless. Grinds you down to dust.",
-    depth: 5,
+    depth: 7,
     blunderRate: 0.0,
     dialogs: {
       start: ["Let's see what you've got.", "A casual game before dinner.", "White to play and survive."],
@@ -124,12 +126,33 @@ export const AiBotsPlay: React.FC = () => {
   const [selectedBot, setSelectedBot] = useState<BotPersona>(BOT_CATALOG[2]); // Gotham default
   const [game, setGame] = useState<Chess>(new Chess());
   const [theme, setTheme] = useState<BoardTheme>("classic");
+  const [evalMode, setEvalMode] = useState<EvalBarMode>("live");
+  const [evalScore, setEvalScore] = useState<number>(0);
+  const [isMate, setIsMate] = useState(false);
+  const [mateIn, setMateIn] = useState<number | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [chatLog, setChatLog] = useState<{ sender: "bot" | "player"; text: string }[]>([]);
   const [lastBotRemark, setLastBotRemark] = useState<string>("");
   const [gameOver, setGameOver] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
   const [switchedMidGame, setSwitchedMidGame] = useState<string | null>(null);
+
+  // Restore stored preferences
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem("prin_chess_theme") as BoardTheme | null;
+      if (savedTheme && ["classic", "wood", "glass", "neon"].includes(savedTheme)) {
+        setTheme(savedTheme);
+      }
+      const savedEval = localStorage.getItem("prin_chess_eval_mode") as EvalBarMode | null;
+      if (savedEval && ["live", "every-5", "disabled"].includes(savedEval)) {
+        setEvalMode(savedEval);
+      }
+    } catch {
+      // LocalStorage not available in private mode
+    }
+  }, []);
 
   // Initial bot greeting
   useEffect(() => {
@@ -140,6 +163,36 @@ export const AiBotsPlay: React.FC = () => {
 
   const getRandomLine = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
+  // Update position evaluation
+  const updateEvaluation = (currentGame: Chess, forced = false) => {
+    if (evalMode === "disabled" && !forced) return;
+
+    const moveCount = currentGame.history().length;
+    if (!forced && evalMode === "every-5" && moveCount % 5 !== 0) {
+      return;
+    }
+
+    if (currentGame.isCheckmate()) {
+      setIsMate(true);
+      const isBlackMated = currentGame.turn() === "b";
+      setMateIn(isBlackMated ? 1 : -1);
+      setEvalScore(isBlackMated ? 10000 : -10000);
+      return;
+    }
+
+    if (currentGame.isDraw()) {
+      setIsMate(false);
+      setMateIn(null);
+      setEvalScore(0);
+      return;
+    }
+
+    setIsMate(false);
+    setMateIn(null);
+    const { score } = ChessEvaluator.getBestMoveAndEval(currentGame, 2);
+    setEvalScore(score);
+  };
+
   // Switch bot cleanly without resetting the board mid-game
   const handleSelectBot = (newBot: BotPersona) => {
     if (newBot.id === selectedBot.id) return;
@@ -147,7 +200,7 @@ export const AiBotsPlay: React.FC = () => {
 
     const isGameActive = game.history().length > 0 && !gameOver;
     if (isGameActive) {
-      const takeoverMsg = `⚡ ${newBot.name} (${newBot.elo} ELO) has stepped in to take over the board! Board position preserved.`;
+      const takeoverMsg = `⚡ ${newBot.name} (${newBot.elo} ELO, depth ${newBot.depth}) has stepped in to take over the board! Board position preserved.`;
       setSwitchedMidGame(newBot.name);
       setLastBotRemark(`I'm taking over as Black! Let's see your skills.`);
       setChatLog((prev) => [...prev, { sender: "bot", text: takeoverMsg }]);
@@ -171,11 +224,14 @@ export const AiBotsPlay: React.FC = () => {
     setGameOver(null);
     setLastMove(null);
     setSwitchedMidGame(null);
+    setEvalScore(0);
+    setIsMate(false);
+    setMateIn(null);
     const greeting = getRandomLine(selectedBot.dialogs.start);
     setLastBotRemark(greeting);
   };
 
-  // Bot makes a move using calibrated ELO engine
+  // Bot makes a move using calibrated ELO & search depth engine
   const triggerBotMove = async (currentGame: Chess, botOverride?: BotPersona) => {
     if (currentGame.isGameOver()) return;
     setIsThinking(true);
@@ -185,11 +241,12 @@ export const AiBotsPlay: React.FC = () => {
     // Dynamic delay for humanized bot feel (400ms - 800ms)
     await new Promise((r) => setTimeout(r, 550));
 
-    // Get move computed by ChessEvaluator calibrated for this bot's ELO
+    // Get move computed by ChessEvaluator calibrated for this bot's ELO and search depth
     const chosenMove = ChessEvaluator.getBotMoveForElo(
       currentGame,
       activeBot.elo,
-      activeBot.blunderRate
+      activeBot.blunderRate,
+      activeBot.depth
     );
 
     if (!chosenMove) {
@@ -208,7 +265,9 @@ export const AiBotsPlay: React.FC = () => {
         }
 
         setLastMove({ from: executed.from as Square, to: executed.to as Square });
-        setGame(new Chess(currentGame.fen()));
+        const updatedGame = new Chess(currentGame.fen());
+        setGame(updatedGame);
+        updateEvaluation(updatedGame);
 
         // Trigger bot dialogue
         triggerBotReaction(executed, currentGame, activeBot);
@@ -264,6 +323,8 @@ export const AiBotsPlay: React.FC = () => {
   // Player makes move
   const handlePlayerMove = (m: { from: Square; to: Square; promotion?: string }) => {
     setLastMove({ from: m.from, to: m.to });
+    const current = new Chess(game.fen());
+    updateEvaluation(current);
 
     if (game.isCheckmate()) {
       setGameOver(`Checkmate! You defeated ${selectedBot.name}! 🏆`);
@@ -316,7 +377,7 @@ export const AiBotsPlay: React.FC = () => {
         {/* Left: Chessboard */}
         <div className="lg:col-span-8 flex flex-col items-center">
           {/* Active Bot Bar */}
-          <div className="flex items-center justify-between w-full max-w-[600px] mb-3 px-2">
+          <div className="flex items-center justify-between w-full max-w-[640px] mb-3 px-2">
             <div className="flex items-center gap-3">
               <span className="text-3xl">{selectedBot.avatar}</span>
               <div>
@@ -326,17 +387,27 @@ export const AiBotsPlay: React.FC = () => {
                     {selectedBot.elo} ELO
                   </span>
                 </div>
-                <span className="text-xs text-slate-400">{selectedBot.title}</span>
+                <span className="text-xs text-slate-400">
+                  {selectedBot.title} • Depth {selectedBot.depth}
+                </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {isThinking && (
                 <div className="flex items-center gap-1.5 text-xs text-blue-400 font-medium animate-pulse">
                   <Bot className="w-4 h-4" />
-                  Calculating...
+                  Calculating (d{selectedBot.depth})...
                 </div>
               )}
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-colors"
+                title="Match & Board Settings"
+              >
+                <Settings className="w-3.5 h-3.5 text-blue-400" />
+                Settings
+              </button>
               <button
                 onClick={resetGame}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-colors"
@@ -349,20 +420,35 @@ export const AiBotsPlay: React.FC = () => {
           </div>
 
           {switchedMidGame && (
-            <div className="w-full max-w-[600px] mb-3 p-2.5 bg-blue-500/20 border border-blue-500/40 rounded-xl text-xs font-bold text-blue-300 text-center animate-fade-in flex items-center justify-center gap-2">
+            <div className="w-full max-w-[640px] mb-3 p-2.5 bg-blue-500/20 border border-blue-500/40 rounded-xl text-xs font-bold text-blue-300 text-center animate-fade-in flex items-center justify-center gap-2">
               <Zap className="w-4 h-4 text-blue-400" />
               Opponent switched to {switchedMidGame} (Board preserved!)
             </div>
           )}
 
-          <Chessboard
-            game={game}
-            orientation="white"
-            onMove={handlePlayerMove}
-            interactive={game.turn() === "w" && !isThinking && !gameOver}
-            theme={theme}
-            lastMove={lastMove}
-          />
+          {/* Chessboard with Evaluation Bar */}
+          <div className="flex items-center justify-center gap-2 sm:gap-4 w-full">
+            {evalMode !== "disabled" && (
+              <EvaluationBar
+                evalScore={evalScore}
+                isMate={isMate}
+                mateIn={mateIn}
+                orientation="white"
+                heightClass="h-[320px] sm:h-[460px] md:h-[540px] lg:h-[600px]"
+                mode={evalMode}
+                moveCount={game.history().length}
+              />
+            )}
+
+            <Chessboard
+              game={game}
+              orientation="white"
+              onMove={handlePlayerMove}
+              interactive={game.turn() === "w" && !isThinking && !gameOver}
+              theme={theme}
+              lastMove={lastMove}
+            />
+          </div>
 
           {gameOver && (
             <div className="mt-4 bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 px-6 py-2.5 rounded-xl text-sm font-bold animate-bounce text-center">
@@ -421,19 +507,42 @@ export const AiBotsPlay: React.FC = () => {
               <RefreshCw className="w-4 h-4" />
               New Game
             </button>
-            <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value as BoardTheme)}
-              className="bg-slate-800 text-slate-200 border border-slate-700 rounded-xl px-3 py-2.5 text-xs sm:text-sm font-medium focus:outline-none"
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold border border-slate-700 shadow-md transition-all"
+              title="Open Board & Engine Settings"
             >
-              <option value="classic">Classic Green</option>
-              <option value="wood">Walnut Wood</option>
-              <option value="glass">Obsidian Glass</option>
-              <option value="neon">Cyber Neon</option>
-            </select>
+              <Settings className="w-4 h-4 text-blue-400" />
+              Settings
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        theme={theme}
+        onThemeChange={(newTheme) => {
+          setTheme(newTheme);
+          try {
+            localStorage.setItem("prin_chess_theme", newTheme);
+          } catch {}
+        }}
+        evalMode={evalMode}
+        onEvalModeChange={(newMode) => {
+          setEvalMode(newMode);
+          try {
+            localStorage.setItem("prin_chess_eval_mode", newMode);
+          } catch {}
+          if (newMode !== "disabled") {
+            updateEvaluation(game, true);
+          }
+        }}
+        activeBotName={selectedBot.name}
+        activeBotDepth={selectedBot.depth}
+      />
     </div>
   );
 };

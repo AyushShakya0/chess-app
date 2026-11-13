@@ -48,10 +48,25 @@ test("ChessEvaluator - analyzeFullGame accuracy computation", () => {
 test("ChessEvaluator - getBotMoveForElo calibrated play", () => {
   const game = new Chess();
   // Noob (400 ELO) move
-  const noobMove = ChessEvaluator.getBotMoveForElo(game, 400, 0.65);
+  const noobMove = ChessEvaluator.getBotMoveForElo(game, 400, 0.65, 1);
   assert.ok(noobMove !== null, "Noob bot should return a legal move");
 
-  // Magnus (2850 ELO) move
-  const magnusMove = ChessEvaluator.getBotMoveForElo(game, 2850, 0.0);
+  // Magnus (2850 ELO) move with depth 6
+  const magnusMove = ChessEvaluator.getBotMoveForElo(game, 2850, 0.0, 6);
   assert.ok(magnusMove !== null, "Magnus bot should return an optimal move");
+
+  // Test GM book reply to 1.e4
+  game.move("e4");
+  const blackBookMove = ChessEvaluator.getBotMoveForElo(game, 2850, 0.0, 6);
+  assert.ok(blackBookMove !== null, "GM should find an opening book reply");
+  assert.ok(["e5", "c5", "e6", "c6"].includes(blackBookMove.san), `Expected classical response to e4, got ${blackBookMove.san}`);
+});
+
+test("ChessEvaluator - deep search with tactical quiescence", () => {
+  // Middlegame tactical position with hanging piece
+  const game = new Chess("r1bqkb1r/pppp1ppp/2n5/4p3/2B1n3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 5");
+  // White to move: can capture hanging knight on e4 or play d3/Qe2
+  const { bestMove, score } = ChessEvaluator.getBestMoveAndEval(game, 2);
+  assert.ok(bestMove !== null, "Should return best tactical move");
+  assert.ok(typeof score === "number");
 });

@@ -108,3 +108,4 @@ test("Secret Queen - Capturing enemy piece as a Queen", () => {
   assert.strictEqual(res.captured?.type, "p", "Captured black pawn");
   assert.strictEqual(game.get("d7")?.color, "w");
 });
+

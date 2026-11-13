@@ -1,4 +1,5 @@
 import { Chess, type Square, type Move } from "chess.js";
+import { OPENINGS_CATALOG } from "../data/openings.ts";
 
 // Piece values in centipawns
 const PIECE_VALUES: Record<string, number> = {
@@ -121,24 +122,101 @@ export class ChessEvaluator {
     return score;
   }
 
-  // Minimax search with alpha-beta pruning (depth 2 for instant sub-millisecond client eval)
+  // Helper to score moves for Alpha-Beta move ordering (MVV-LVA)
+  private static scoreMove(m: Move): number {
+    let score = 0;
+    if (m.captured) {
+      const victimVal = PIECE_VALUES[m.captured] || 100;
+      const attackerVal = PIECE_VALUES[m.piece] || 100;
+      // Most Valuable Victim - Least Valuable Attacker (e.g., PxQ = 1000 + 9000 - 100 = 9900)
+      score += 1000 + (victimVal * 10 - attackerVal);
+    }
+    if (m.promotion) score += 900;
+    if (m.san && m.san.includes("+")) score += 500;
+    if (["d4", "e4", "d5", "e5"].includes(m.to)) score += 30;
+    return score;
+  }
+
+  // Orders moves to maximize alpha-beta pruning efficiency
+  private static orderMoves(moves: Move[]): Move[] {
+    return moves.sort((a, b) => this.scoreMove(b) - this.scoreMove(a));
+  }
+
+  // Quiescence search: calculates captures & checks to resolve tactical tension at horizon
+  private static quiescence(
+    game: Chess,
+    alpha: number,
+    beta: number,
+    isMaximizing: boolean,
+    qdepth: number
+  ): number {
+    const standPat = this.evaluatePosition(game);
+    if (qdepth <= 0) return standPat;
+
+    if (isMaximizing) {
+      if (standPat >= beta) return beta;
+      if (standPat > alpha) alpha = standPat;
+    } else {
+      if (standPat <= alpha) return alpha;
+      if (standPat < beta) beta = standPat;
+    }
+
+    // Only search top priority captures and forcing checks (capped to top 5)
+    const tacticalMoves = (game.moves({ verbose: true }) as Move[]).filter(
+      (m) => m.captured || (m.san && m.san.includes("+"))
+    );
+    this.orderMoves(tacticalMoves);
+    const topTactical = tacticalMoves.slice(0, 5);
+
+    if (isMaximizing) {
+      for (const m of topTactical) {
+        game.move(m);
+        const score = this.quiescence(game, alpha, beta, false, qdepth - 1);
+        game.undo();
+        if (score >= beta) return beta;
+        if (score > alpha) alpha = score;
+      }
+      return alpha;
+    } else {
+      for (const m of topTactical) {
+        game.move(m);
+        const score = this.quiescence(game, alpha, beta, true, qdepth - 1);
+        game.undo();
+        if (score <= alpha) return alpha;
+        if (score < beta) beta = score;
+      }
+      return beta;
+    }
+  }
+
+  // Minimax search with move ordering, alpha-beta pruning, and quiescence horizon extension
   public static getBestMoveAndEval(
     game: Chess,
-    depth = 2
+    depth = 2,
+    qdepth = 0
   ): { bestMove: Move | null; score: number } {
     const isMaximizing = game.turn() === "w";
-    const moves = game.moves({ verbose: true }) as Move[];
+    let moves = game.moves({ verbose: true }) as Move[];
 
     if (moves.length === 0) {
       return { bestMove: null, score: this.evaluatePosition(game) };
     }
+
+    moves = this.orderMoves(moves);
 
     let bestMove: Move = moves[0];
     let bestScore = isMaximizing ? -Infinity : Infinity;
 
     for (const m of moves) {
       game.move(m);
-      const score = this.minimax(game, depth - 1, -Infinity, Infinity, !isMaximizing);
+      const score = this.minimax(
+        game,
+        depth - 1,
+        -Infinity,
+        Infinity,
+        !isMaximizing,
+        qdepth
+      );
       game.undo();
 
       if (isMaximizing) {
@@ -157,18 +235,55 @@ export class ChessEvaluator {
     return { bestMove, score: bestScore };
   }
 
-  // Calibrated bot move picker reflecting actual human ELO rating
+  // Opening book line lookup for Grandmaster bots
+  public static getBookMove(game: Chess): Move | null {
+    const history = game.history();
+    if (history.length >= 12) return null;
+
+    const matchingNextMoves: string[] = [];
+    for (const opening of OPENINGS_CATALOG) {
+      for (const variation of opening.variations) {
+        if (variation.moves.length <= history.length) continue;
+        let isMatch = true;
+        for (let i = 0; i < history.length; i++) {
+          if (variation.moves[i].san !== history[i]) {
+            isMatch = false;
+            break;
+          }
+        }
+        if (isMatch) {
+          matchingNextMoves.push(variation.moves[history.length].san);
+        }
+      }
+    }
+
+    if (matchingNextMoves.length === 0) return null;
+
+    // Pick one of the authentic theoretical opening book choices
+    const chosenSan = matchingNextMoves[Math.floor(Math.random() * matchingNextMoves.length)];
+    const legalMoves = game.moves({ verbose: true }) as Move[];
+    return legalMoves.find((m) => m.san === chosenSan) || null;
+  }
+
+  // Calibrated bot move picker reflecting actual human ELO rating & depth
   public static getBotMoveForElo(
     game: Chess,
     elo: number,
-    blunderRate: number
+    blunderRate: number,
+    botDepth?: number
   ): Move | null {
     const moves = game.moves({ verbose: true }) as Move[];
     if (moves.length === 0) return null;
 
+    // 1. For Grandmaster bots (ELO >= 2000), check opening theory book first
+    if (elo >= 2000 && game.history().length < 10) {
+      const bookMove = this.getBookMove(game);
+      if (bookMove) return bookMove;
+    }
+
     const isMaximizing = game.turn() === "w";
 
-    // 1. Bot intentional blunder check based on blunderRate
+    // 2. Bot intentional blunder check based on blunderRate
     if (Math.random() < blunderRate) {
       if (elo <= 600) {
         // Beginners (400 ELO) pick random moves carelessly
@@ -188,13 +303,29 @@ export class ChessEvaluator {
       return scored[idx]?.move || moves[0];
     }
 
-    // 2. High-rated play: Minimax calculation based on ELO
-    let depth = 2;
-    if (elo <= 600) depth = 1;
-    else if (elo <= 1400) depth = 2;
-    else depth = 3; // Depth 3 with alpha-beta evaluates 10,000+ positions in ~60ms
+    // 3. High-rated play: Minimax calculation based on ELO & botDepth
+    let depth = botDepth ?? (elo <= 600 ? 1 : elo <= 1400 ? 2 : elo <= 2000 ? 3 : elo <= 2500 ? 5 : 6);
 
-    const result = this.getBestMoveAndEval(game, depth);
+    // Dynamic endgame depth boost when piece count drops
+    const board = game.board();
+    let pieceCount = 0;
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        if (board[r][c]) pieceCount++;
+      }
+    }
+    if (pieceCount <= 12 && depth >= 5) {
+      depth += 1; // e.g. Magnus reaches depth 7 in endgames
+    }
+
+    let baseDepth = depth;
+    let qdepth = 0;
+    if (depth >= 4) {
+      baseDepth = Math.max(2, Math.floor(depth * 0.6));
+      qdepth = depth - baseDepth;
+    }
+
+    const result = this.getBestMoveAndEval(game, baseDepth, qdepth);
     return result.bestMove || moves[0];
   }
 
@@ -203,19 +334,40 @@ export class ChessEvaluator {
     depth: number,
     alpha: number,
     beta: number,
-    isMaximizing: boolean
+    isMaximizing: boolean,
+    qdepth = 0
   ): number {
-    if (depth === 0 || game.isGameOver()) {
+    if (depth <= 0) {
+      return qdepth > 0
+        ? this.quiescence(game, alpha, beta, isMaximizing, qdepth)
+        : this.evaluatePosition(game);
+    }
+    if (game.isGameOver()) {
       return this.evaluatePosition(game);
     }
 
-    const moves = game.moves({ verbose: true }) as Move[];
+    let moves = game.moves({ verbose: true }) as Move[];
+    moves = this.orderMoves(moves);
+
+    // Forward pruning for deeper plies to maintain sub-second GM response times
+    if (depth <= 2 && moves.length > 10) {
+      const tactical: Move[] = [];
+      const quiet: Move[] = [];
+      for (const m of moves) {
+        if (m.captured || (m.san && m.san.includes("+")) || m.promotion) {
+          tactical.push(m);
+        } else {
+          quiet.push(m);
+        }
+      }
+      moves = [...tactical, ...quiet.slice(0, 5)];
+    }
 
     if (isMaximizing) {
       let maxEval = -Infinity;
       for (const m of moves) {
         game.move(m);
-        const evaluation = this.minimax(game, depth - 1, alpha, beta, false);
+        const evaluation = this.minimax(game, depth - 1, alpha, beta, false, qdepth);
         game.undo();
         maxEval = Math.max(maxEval, evaluation);
         alpha = Math.max(alpha, evaluation);
@@ -226,7 +378,7 @@ export class ChessEvaluator {
       let minEval = Infinity;
       for (const m of moves) {
         game.move(m);
-        const evaluation = this.minimax(game, depth - 1, alpha, beta, true);
+        const evaluation = this.minimax(game, depth - 1, alpha, beta, true, qdepth);
         game.undo();
         minEval = Math.min(minEval, evaluation);
         beta = Math.min(beta, evaluation);
