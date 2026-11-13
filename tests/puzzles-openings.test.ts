@@ -48,7 +48,7 @@ test("Opening Academy - verify deep variations into middlegame (20+ plies)", () 
 });
 
 test("Interactive Courses - verify all curriculum lessons and tactical concepts", () => {
-  assert.ok(CHESS_COURSES.length >= 5, "Expected at least 5 structured chess courses");
+  assert.ok(CHESS_COURSES.length >= 8, `Expected at least 8 structured chess courses, got ${CHESS_COURSES.length}`);
 
   let totalVerified = 0;
   for (const course of CHESS_COURSES) {
@@ -73,5 +73,5 @@ test("Interactive Courses - verify all curriculum lessons and tactical concepts"
     }
   }
 
-  assert.ok(totalVerified >= 15, `Expected at least 15 verified interactive lessons, got ${totalVerified}`);
+  assert.ok(totalVerified >= 25, `Expected at least 25 verified interactive lessons, got ${totalVerified}`);
 });
