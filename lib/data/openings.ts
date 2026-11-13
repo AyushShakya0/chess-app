@@ -370,3 +370,4 @@ export const OPENINGS_CATALOG: OpeningFamily[] = [
     ],
   },
 ];
+

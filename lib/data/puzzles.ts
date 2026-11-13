@@ -121,3 +121,4 @@ export function getMoveCoordsFromSan(fen: string, sanOrUci: string): { from: Squ
   } catch {}
   return null;
 }
+

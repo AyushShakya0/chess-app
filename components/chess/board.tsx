@@ -38,6 +38,8 @@ interface ChessboardProps {
   customArrows?: BoardArrow[];
   customHighlights?: BoardHighlight[];
   allowedColor?: "w" | "b";
+  boardSizeClass?: string;
+  customMoveHandler?: (from: Square, to: Square) => boolean;
 }
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
@@ -57,6 +59,8 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   customArrows,
   customHighlights,
   allowedColor,
+  boardSizeClass,
+  customMoveHandler,
 }) => {
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [legalMoves, setLegalMoves] = useState<Square[]>([]);
@@ -135,6 +139,17 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     }
 
     if (isCurrentTurn) {
+      if (customMoveHandler) {
+        const handled = customMoveHandler(from, to);
+        if (handled) {
+          setSelectedSquare(null);
+          setLegalMoves([]);
+          setArrows([]);
+          setHighlights([]);
+          return true;
+        }
+      }
+
       try {
         const move = game.move({
           from,
@@ -325,7 +340,9 @@ export const Chessboard: React.FC<ChessboardProps> = ({
       <div
         ref={boardRef}
         onContextMenu={(e) => e.preventDefault()}
-        className="grid grid-cols-8 grid-rows-8 w-[320px] h-[320px] sm:w-[460px] sm:h-[460px] md:w-[540px] md:h-[540px] lg:w-[600px] lg:h-[600px] relative"
+        className={`grid grid-cols-8 grid-rows-8 relative ${
+          boardSizeClass || "w-[320px] h-[320px] sm:w-[460px] sm:h-[460px] md:w-[540px] md:h-[540px] lg:w-[600px] lg:h-[600px]"
+        }`}
       >
         {displayRanks.map((rank, rankIndex) =>
           displayFiles.map((file, fileIndex) => {
