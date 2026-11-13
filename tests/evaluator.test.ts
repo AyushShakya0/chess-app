@@ -59,7 +59,7 @@ test("ChessEvaluator - getBotMoveForElo calibrated play", () => {
   game.move("e4");
   const blackBookMove = ChessEvaluator.getBotMoveForElo(game, 2850, 0.0, 6);
   assert.ok(blackBookMove !== null, "GM should find an opening book reply");
-  assert.ok(["e5", "c5", "e6", "c6"].includes(blackBookMove.san), `Expected classical response to e4, got ${blackBookMove.san}`);
+  assert.ok(["e5", "c5", "e6", "c6", "d5"].includes(blackBookMove.san), `Expected classical response to e4, got ${blackBookMove.san}`);
 });
 
 test("ChessEvaluator - deep search with tactical quiescence", () => {

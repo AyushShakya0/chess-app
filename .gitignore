@@ -39,3 +39,6 @@ bin/
 *.exe
 *.test
 
+# Scratch directory
+scratch/
+

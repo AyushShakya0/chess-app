@@ -3,6 +3,7 @@ import assert from "node:assert";
 import { Chess } from "chess.js";
 import { CURATED_PUZZLES } from "../lib/data/puzzles.ts";
 import { OPENINGS_CATALOG } from "../lib/data/openings.ts";
+import { CHESS_COURSES } from "../lib/data/courses.ts";
 
 test("Tactical Puzzles - verify all multi-move sequences and checkmate deliveries", () => {
   assert.ok(CURATED_PUZZLES.length >= 8, "Expected at least 8 curated tactical puzzles");
@@ -44,4 +45,33 @@ test("Opening Academy - verify deep variations into middlegame (20+ plies)", () 
       }
     }
   }
+});
+
+test("Interactive Courses - verify all curriculum lessons and tactical concepts", () => {
+  assert.ok(CHESS_COURSES.length >= 5, "Expected at least 5 structured chess courses");
+
+  let totalVerified = 0;
+  for (const course of CHESS_COURSES) {
+    assert.ok(course.lessons.length >= 2, `Course ${course.title} must have multiple lessons`);
+
+    for (const lesson of course.lessons) {
+      totalVerified++;
+      const game = new Chess(lesson.fen);
+      assert.ok(lesson.moves.length >= 2, `Lesson ${lesson.id} must have step-by-step moves`);
+
+      for (let i = 0; i < lesson.moves.length; i++) {
+        const moveObj = lesson.moves[i];
+        const result = game.move(moveObj.san);
+        assert.ok(
+          result,
+          `Course ${course.title} - Lesson ${lesson.title}: move #${i + 1} (${moveObj.san}) must be legal in ${game.fen()}`
+        );
+        assert.ok(moveObj.explanation.length > 10, `Explanation for move ${moveObj.san} must be educational`);
+      }
+
+      assert.ok(lesson.keyTakeaway.length > 15, `Key takeaway for ${lesson.title} must be meaningful`);
+    }
+  }
+
+  assert.ok(totalVerified >= 15, `Expected at least 15 verified interactive lessons, got ${totalVerified}`);
 });

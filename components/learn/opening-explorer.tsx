@@ -18,18 +18,27 @@ import {
   Eye,
   Trophy,
   Swords,
+  Search,
+  Copy,
+  Check,
+  Share2,
 } from "lucide-react";
 import { sound } from "@/lib/audio/sound";
 import confetti from "canvas-confetti";
 import { OPENINGS_CATALOG, type OpeningFamily, type VariationLine, type OpeningMoveIdea } from "@/lib/data/openings";
 import { getMoveCoordsFromSan } from "@/lib/data/puzzles";
+import { CoursesHub } from "./courses-hub";
 
 export const OpeningExplorer: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<"openings" | "academy">("openings");
+  const [activeTab, setActiveTab] = useState<"courses" | "openings" | "academy">("courses");
 
   // Selected Family and Active Variation Line
   const [selectedFamily, setSelectedFamily] = useState<OpeningFamily>(OPENINGS_CATALOG[0]);
   const [activeVariation, setActiveVariation] = useState<VariationLine>(OPENINGS_CATALOG[0].variations[0]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [copiedFen, setCopiedFen] = useState(false);
+  const [copiedPgn, setCopiedPgn] = useState(false);
 
   // Board & Training State
   const [game, setGame] = useState<Chess>(new Chess());
@@ -41,6 +50,38 @@ export const OpeningExplorer: React.FC = () => {
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
   const [showArrowHint, setShowArrowHint] = useState(true);
   const [theme] = useState<BoardTheme>("classic");
+
+  // Filtered opening families based on category and search query
+  const filteredFamilies = OPENINGS_CATALOG.filter((f) => {
+    if (selectedCategory !== "All" && f.category !== selectedCategory) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = f.name.toLowerCase().includes(q);
+      const matchVar = f.variations.some(
+        (v) => v.name.toLowerCase().includes(q) || v.eco.toLowerCase().includes(q)
+      );
+      if (!matchName && !matchVar) return false;
+    }
+    return true;
+  });
+
+  const handleCopyFen = () => {
+    navigator.clipboard.writeText(game.fen());
+    setCopiedFen(true);
+    setTimeout(() => setCopiedFen(false), 2000);
+  };
+
+  const handleCopyPgn = () => {
+    const pgnMoves = activeVariation.moves
+      .map((m, idx) => {
+        const moveNum = Math.floor(idx / 2) + 1;
+        return idx % 2 === 0 ? `${moveNum}. ${m.san}` : `${m.san}`;
+      })
+      .join(" ");
+    navigator.clipboard.writeText(pgnMoves);
+    setCopiedPgn(true);
+    setTimeout(() => setCopiedPgn(false), 2000);
+  };
 
   // Initialize or reset line
   const loadVariation = (variation: VariationLine, side?: "white" | "black") => {
@@ -310,19 +351,28 @@ export const OpeningExplorer: React.FC = () => {
           </div>
           <div>
             <h2 className="text-xl font-black text-white">Opening Academy & Courses</h2>
-            <p className="text-xs text-slate-400">Deep grandmaster variations into the middlegame with bot theory sparring</p>
+            <p className="text-xs text-slate-400">Deep grandmaster variations and structured interactive chess courses</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2 bg-slate-900/90 p-1 rounded-xl border border-slate-700">
+          <button
+            onClick={() => setActiveTab("courses")}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              activeTab === "courses" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <GraduationCap className="w-4 h-4 text-amber-400" />
+            Courses & Lessons
+          </button>
           <button
             onClick={() => setActiveTab("openings")}
             className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
               activeTab === "openings" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
             }`}
           >
-            <Compass className="w-4 h-4" />
-            Interactive Trainer
+            <Compass className="w-4 h-4 text-emerald-400" />
+            Opening Explorer ({OPENINGS_CATALOG.length})
           </button>
           <button
             onClick={() => setActiveTab("academy")}
@@ -330,13 +380,15 @@ export const OpeningExplorer: React.FC = () => {
               activeTab === "academy" ? "bg-blue-600 text-white shadow-md" : "text-slate-400 hover:text-white"
             }`}
           >
-            <GraduationCap className="w-4 h-4" />
-            Opening Principles
+            <BookOpen className="w-4 h-4 text-purple-400" />
+            Principles
           </button>
         </div>
       </div>
 
-      {activeTab === "openings" ? (
+      {activeTab === "courses" ? (
+        <CoursesHub />
+      ) : activeTab === "openings" ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start w-full">
           {/* Left Column: Board & Navigation Controls */}
           <div className="lg:col-span-8 flex flex-col items-center">
@@ -349,24 +401,42 @@ export const OpeningExplorer: React.FC = () => {
                 <span className="text-sm font-bold text-white">{activeVariation.name}</span>
               </div>
 
-              {/* Side Selector */}
-              <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 p-0.5 rounded-lg text-[11px]">
+              {/* Action Buttons: FEN / PGN / Side Selector */}
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => setPracticeSide("white")}
-                  className={`px-2 py-1 rounded font-bold transition-colors ${
-                    practiceSide === "white" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
+                  onClick={handleCopyFen}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-[10px] font-mono text-slate-300 hover:text-white flex items-center gap-1 transition-colors"
+                  title="Copy current position FEN"
                 >
-                  ⚪ Play White
+                  {copiedFen ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  {copiedFen ? "Copied" : "FEN"}
                 </button>
                 <button
-                  onClick={() => setPracticeSide("black")}
-                  className={`px-2 py-1 rounded font-bold transition-colors ${
-                    practiceSide === "black" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
-                  }`}
+                  onClick={handleCopyPgn}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-[10px] font-mono text-slate-300 hover:text-white flex items-center gap-1 transition-colors"
+                  title="Copy variation PGN"
                 >
-                  ⚫ Play Black
+                  {copiedPgn ? <Check className="w-3 h-3 text-emerald-400" /> : <Share2 className="w-3 h-3" />}
+                  {copiedPgn ? "Copied" : "PGN"}
                 </button>
+                <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 p-0.5 rounded-lg text-[11px]">
+                  <button
+                    onClick={() => setPracticeSide("white")}
+                    className={`px-2 py-0.5 rounded font-bold transition-colors ${
+                      practiceSide === "white" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    ⚪ White
+                  </button>
+                  <button
+                    onClick={() => setPracticeSide("black")}
+                    className={`px-2 py-0.5 rounded font-bold transition-colors ${
+                      practiceSide === "black" ? "bg-blue-600 text-white" : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    ⚫ Black
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -448,13 +518,45 @@ export const OpeningExplorer: React.FC = () => {
 
           {/* Right Column: Complete Move Order Sheet & Variations Tree */}
           <div className="lg:col-span-4 flex flex-col gap-4 w-full">
-            {/* Opening Families Selector */}
+            {/* Opening Families Selector with Search & Category Filters */}
             <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4 shadow-xl">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                Popular Opening Books
-              </span>
-              <div className="grid grid-cols-2 gap-2">
-                {OPENINGS_CATALOG.map((family) => (
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                  Opening Books ({filteredFamilies.length})
+                </span>
+              </div>
+
+              {/* Search Bar */}
+              <div className="relative mb-2">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search openings, ECO (e.g. Najdorf, C97, London)..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-900 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="flex flex-wrap gap-1 mb-2.5">
+                {["All", "1.e4 Open Games", "1.e4 Semi-Open", "1.d4 Closed Games", "Flank Openings"].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-colors ${
+                      selectedCategory === cat
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-900 text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
+                {filteredFamilies.map((family) => (
                   <button
                     key={family.id}
                     onClick={() => handleSelectFamily(family)}
@@ -465,7 +567,7 @@ export const OpeningExplorer: React.FC = () => {
                     }`}
                   >
                     <div className="text-xs font-bold line-clamp-1">{family.name}</div>
-                    <span className="text-[10px] text-slate-400">{family.category}</span>
+                    <span className="text-[10px] text-slate-400 block truncate">{family.category}</span>
                   </button>
                 ))}
               </div>

@@ -114,3 +114,4 @@ export const EvaluationBar: React.FC<EvaluationBarProps> = ({
     </div>
   );
 };
+
