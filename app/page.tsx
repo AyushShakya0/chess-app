@@ -21,7 +21,7 @@ export default function Home() {
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100">
       <Navbar activeTab={activeTab} setActiveTab={setActiveTab} is3D={is3D} setIs3D={setIs3D} />
 
-      <main className="flex-1 flex flex-col py-6 px-3 sm:px-6">
+      <main className="flex-1 flex flex-col py-2 sm:py-3 px-2 sm:px-4">
         {is3D ? (
           <div className="flex flex-col items-center justify-center p-6 max-w-4xl mx-auto w-full">
             <div className="flex items-center justify-between w-full max-w-[600px] mb-4">
@@ -51,7 +51,7 @@ export default function Home() {
         )}
       </main>
 
-      <footer className="w-full border-t border-slate-900 py-4 text-center text-xs text-slate-500">
+      <footer className="w-full border-t border-slate-900 py-2.5 text-center text-[11px] text-slate-500">
         Prin Chess &copy; {new Date().getFullYear()} &bull; Built with Next.js, Supabase, Go & Google AI Studio
       </footer>
     </div>
