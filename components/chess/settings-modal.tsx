@@ -87,11 +87,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
       <div
-        className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]"
+        className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden relative flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
               <Sliders className="w-5 h-5" />
@@ -110,7 +110,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto py-5 space-y-6 pr-1">
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5 pr-2">
           {/* Section 1: Board Theme */}
           <div>
             <div className="flex items-center gap-2 mb-3">
@@ -256,7 +256,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="pt-4 border-t border-slate-800 flex justify-end">
+        <div className="px-6 py-4 border-t border-slate-800 flex justify-end bg-slate-900/90">
           <button
             onClick={onClose}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg transition-all"
