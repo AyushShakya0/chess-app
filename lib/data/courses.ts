@@ -518,5 +518,110 @@ export const CHESS_COURSES: ChessCourse[] = [
         keyTakeaway: "In opposite-side castling races, striking the center with ...d5 halts the opponent's flank pawn storm."
       }
     ]
+  },
+
+  // 9. Pawn Skeletons & Strategic Middlegames
+  {
+    id: "pawn-skeletons",
+    title: "Pawn Skeletons & Strategic Middlegames",
+    subtitle: "Minority Attacks, IQP Dynamic Breaks & Opposite Bishops",
+    category: "Middlegame",
+    level: "Advanced",
+    icon: "♟️",
+    description: "Deepen your strategic vision with classic pawn formations: the Carlsbad minority attack, IQP detonations, and opposite-colored bishop attacks.",
+    lessons: [
+      {
+        id: "psk-1",
+        title: "The Carlsbad Minority Attack",
+        fen: "r1bqr1k1/pp1nbppp/2p1pn2/3p2B1/2PP4/2N1PN2/PPQ1BPPP/R4RK1 w - - 4 10",
+        playerSide: "white",
+        instruction: "Initiate the legendary Carlsbad minority attack with b4-b5 to undermine Black's queenside pawn chain!",
+        moves: [
+          { san: "b4", explanation: "White pushes b4, commencing the minority attack against Black's queenside majority." },
+          { san: "a6", explanation: "Black defends with a6 to slow down White's advance." },
+          { san: "Rab1", explanation: "White places the rook on the semi-open b-file directly behind the advancing pawn." },
+          { san: "Nf8", explanation: "Black routes the knight towards kingside defense." },
+          { san: "b5", explanation: "White strikes with b5! Shatters Black's pawns and saddles Black with a permanent backward c6 weakness." }
+        ],
+        keyTakeaway: "The minority attack uses two pawns against three to create an isolated or backward target that can be pressured for the rest of the game."
+      },
+      {
+        id: "psk-2",
+        title: "The Isolated Queen's Pawn (IQP) Central Detonation",
+        fen: "r1bq1rk1/pp1n1ppp/4pn2/8/1b1P4/2NB1N2/PP3PPP/R1BQR1K1 w - - 0 11",
+        playerSide: "white",
+        instruction: "Pin Black's f6 knight and execute the thematic d4-d5 central thrust to break open the board!",
+        moves: [
+          { san: "Bg5", explanation: "White pins Black's knight to the queen, preparing the central breakthrough." },
+          { san: "Be7", explanation: "Black unpins the knight with Be7." },
+          { san: "d5", explanation: "The thematic d4-d5 central thrust! White sacrifices the isolated pawn to blast open central files and diagonals." },
+          { san: "exd5", explanation: "Black is forced to accept the central pawn offer." },
+          { san: "Nxd5", explanation: "White recaptures with the knight, dominating the open board with aggressive piece coordination." }
+        ],
+        keyTakeaway: "An Isolated Queen's Pawn (IQP) gives massive dynamic piece activity. Breakthrough with d4-d5 before the opponent can block it."
+      },
+      {
+        id: "psk-3",
+        title: "Opposite-Colored Bishop Attack",
+        fen: "r4rk1/pp1b1ppp/1q2p3/3pP3/1b1n1P2/3B1N2/PP1B2PP/R2Q1RK1 w - - 0 13",
+        playerSide: "white",
+        instruction: "Opposite-colored bishops heavily favor the attacker with heavy pieces on the board. Sacrifice on h7!",
+        moves: [
+          { san: "Bxh7+", explanation: "White sacrifices the bishop on h7, tearing open the Black king's castled shelter." },
+          { san: "Kxh7", explanation: "Black is forced to recapture." },
+          { san: "Ng5+", explanation: "The knight springs into g5 with check, cutting off king squares." },
+          { san: "Kg8", explanation: "Black king retreats to g8." },
+          { san: "Qh5", explanation: "White Queen swings to h5 with unstoppable mating threats on h7!" }
+        ],
+        keyTakeaway: "In middlegames with queens on the board, opposite-colored bishops act like an extra piece for the attacker because the defender cannot contest the attacker's bishop complex."
+      }
+    ]
+  },
+
+  // 10. Endgame Fortresses & Essential Geometry
+  {
+    id: "endgame-fortresses",
+    title: "Endgame Fortresses & Essential Geometry",
+    subtitle: "Shouldering, The Wrong Bishop Draw & King Paths",
+    category: "Endgames",
+    level: "Advanced",
+    icon: "🏰",
+    description: "Learn how grandmasters save seemingly lost endgames through theoretical fortresses, king shouldering, and wrong-colored bishop geometry.",
+    lessons: [
+      {
+        id: "ef-1",
+        title: "Shouldering (Bodychecking) the Enemy King",
+        fen: "8/8/4k3/8/5P2/4K3/8/8 w - - 0 1",
+        playerSide: "white",
+        instruction: "Seize the vertical opposition and bodycheck the defending king to shepherd your passed f-pawn!",
+        moves: [
+          { san: "Ke4", explanation: "White claims the direct vertical opposition, shouldering the Black king." },
+          { san: "Kf6", explanation: "Black steps aside to f6." },
+          { san: "f5", explanation: "The passed pawn advances with full king escort." },
+          { san: "Kf7", explanation: "Black retreats to f7." },
+          { san: "Ke5", explanation: "White shoulders the Black king by seizing e5, denying Black entry to the key e6 square!" },
+          { san: "Ke7", explanation: "Black tries to hold the line." },
+          { san: "f6+", explanation: "White pushes f6 with check, clearing the path to victory!" }
+        ],
+        keyTakeaway: "Shouldering (or bodychecking) uses your king to physically blockade the opponent's king from reaching critical defensive squares."
+      },
+      {
+        id: "ef-2",
+        title: "The Wrong-Colored Bishop & Rook Pawn Fortress",
+        fen: "7k/8/8/8/8/6K1/7P/5B2 b - - 0 1",
+        playerSide: "black",
+        instruction: "White is an entire bishop and pawn ahead. Use the corner fortress to force an unbreakable book draw!",
+        moves: [
+          { san: "Kg7", explanation: "Black king oscillates comfortably in front of the pawn." },
+          { san: "h4", explanation: "White advances the h-pawn." },
+          { san: "Kh8", explanation: "Black retreats to the corner square h8! Since White's bishop is light-squared, it can never control h8." },
+          { san: "h5", explanation: "White pushes h5." },
+          { san: "Kg8", explanation: "Black king steps to g8." },
+          { san: "h6", explanation: "White pushes to h6." },
+          { san: "Kh8", explanation: "Black tucks into h8. White cannot drive the king out without delivering stalemate! An unbreakable fortress." }
+        ],
+        keyTakeaway: "If the opponent has a rook pawn and a bishop that does not control the promotion square (the 'wrong bishop'), reaching the corner square guarantees a draw."
+      }
+    ]
   }
 ];
