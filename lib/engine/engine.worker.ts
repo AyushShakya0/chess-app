@@ -2,9 +2,15 @@ import { Chess } from "chess.js";
 import { ChessEvaluator } from "./evaluator";
 
 self.onmessage = (e: MessageEvent) => {
-  const { id, type, fen, elo, blunderRate, depth } = e.data;
+  const { id, type, fen, elo, blunderRate, depth, history } = e.data;
 
   try {
+    if (type === "analyzeFullGame") {
+      const analysis = ChessEvaluator.analyzeFullGame(history || []);
+      self.postMessage({ id, type: "analyzeResult", analysis });
+      return;
+    }
+
     const game = new Chess(fen);
 
     if (type === "search") {
@@ -44,4 +50,3 @@ self.onmessage = (e: MessageEvent) => {
     self.postMessage({ id, error: msg });
   }
 };
-

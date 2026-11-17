@@ -10,6 +10,9 @@ import {
   checkSecretQueenCaptured,
 } from "@/lib/variants/hidden-queen";
 import { useChessClock } from "@/lib/chess/use-chess-clock";
+import { useChessGame } from "@/lib/chess/use-chess-game";
+import { GameReviewModal } from "./game-review-modal";
+import { useSettings } from "@/lib/stores/settings-store";
 import {
   RotateCw,
   SplitSquareVertical,
@@ -55,11 +58,24 @@ const BLACK_STARTING_PAWNS: { square: Square; label: string }[] = [
 
 export const PassAndPlay: React.FC = () => {
   const [variant, setVariant] = useState<PassVariant>("standard");
-  const [game, setGame] = useState<Chess>(() => new Chess());
-  const [, setGameVersion] = useState(0);
+  const [settings, updateSettings] = useSettings();
+  const theme = settings.theme;
+  const autoQueen = settings.autoQueen;
+
+  const {
+    game,
+    version: gameVersion,
+    bumpVersion,
+    reset: resetChessGame,
+    history: moveHistory,
+    lastMove,
+    setLastMove,
+  } = useChessGame({
+    persistenceKey: "prin_chess_active_game_pass",
+    enableSounds: true,
+  });
+
   const [viewMode, setViewMode] = useState<"dual" | "flip">("dual");
-  const [theme, setTheme] = useState<BoardTheme>("classic");
-  const [autoQueen] = useState(true);
 
   // Variant trackers
   const [whiteChecks, setWhiteChecks] = useState(0);
@@ -85,8 +101,7 @@ export const PassAndPlay: React.FC = () => {
   });
 
   const [gameOverMessage, setGameOverMessage] = useState<string | null>(null);
-  const [moveHistory, setMoveHistory] = useState<string[]>([]);
-  const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
 
   const updateScore = (winner: "w" | "b" | "d") => {
     setScore((prev) => ({
@@ -147,8 +162,7 @@ export const PassAndPlay: React.FC = () => {
         }
 
         setLastMove({ from, to });
-        setGameVersion((v) => v + 1);
-        setMoveHistory(game.history());
+        bumpVersion();
         setIsClockRunning(true);
         clock.switchTurn();
 
@@ -183,8 +197,7 @@ export const PassAndPlay: React.FC = () => {
         }
 
         setLastMove({ from, to });
-        setGameVersion((v) => v + 1);
-        setMoveHistory(game.history());
+        bumpVersion();
         setIsClockRunning(true);
         clock.switchTurn();
 
@@ -248,8 +261,7 @@ export const PassAndPlay: React.FC = () => {
     }
 
     setLastMove({ from: move.from, to: move.to });
-    setGameVersion((v) => v + 1);
-    setMoveHistory(game.history());
+    bumpVersion();
 
     // 3-Check rule verification
     if (variant === "three-check") {
@@ -306,11 +318,10 @@ export const PassAndPlay: React.FC = () => {
     } else if (newVariant === "knight-odds") {
       fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R1BQKBNR w KQkq - 0 1";
     }
-    setGame(new Chess(fen));
+    resetChessGame(fen);
     clock.resetClock(timeControl);
     setIsClockRunning(false);
     setGameOverMessage(null);
-    setMoveHistory([]);
     setLastMove(null);
     setWhiteChecks(0);
     setBlackChecks(0);
@@ -387,7 +398,7 @@ export const PassAndPlay: React.FC = () => {
         <div className="flex items-center gap-2">
           <select
             value={theme}
-            onChange={(e) => setTheme(e.target.value as BoardTheme)}
+            onChange={(e) => updateSettings({ theme: e.target.value as BoardTheme })}
             className="bg-slate-900 text-slate-200 border border-slate-700 rounded-lg px-2 py-1.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="classic">Classic Green</option>
@@ -491,8 +502,17 @@ export const PassAndPlay: React.FC = () => {
         </div>
 
         {gameOverMessage && (
-          <div className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold animate-bounce text-center">
-            {gameOverMessage}
+          <div className="flex items-center gap-2">
+            <div className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 px-4 py-1.5 rounded-lg text-xs sm:text-sm font-bold text-center">
+              {gameOverMessage}
+            </div>
+            <button
+              onClick={() => setIsReviewOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold shadow-md transition-all"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Review
+            </button>
           </div>
         )}
 
@@ -651,7 +671,7 @@ export const PassAndPlay: React.FC = () => {
             Move Notation History
           </span>
           <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto text-xs font-mono text-slate-200">
-            {moveHistory.map((m, idx) => (
+            {moveHistory.map((m: string, idx: number) => (
               <span
                 key={idx}
                 className={`px-2 py-0.5 rounded ${
@@ -775,6 +795,13 @@ export const PassAndPlay: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Full Game Review Modal */}
+      <GameReviewModal
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        history={game.history()}
+      />
     </div>
   );
 };

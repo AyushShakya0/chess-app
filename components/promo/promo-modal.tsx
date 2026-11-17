@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Sparkles, Check, Crown, X, KeyRound } from "lucide-react";
 import confetti from "canvas-confetti";
 import { sound } from "@/lib/audio/sound";
+import { validatePromoCode } from "@/lib/promo";
 
 interface PromoModalProps {
   isOpen: boolean;
@@ -13,16 +14,14 @@ interface PromoModalProps {
 
 export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUnlocked }) => {
   const [code, setCode] = useState("");
-  const [isVip, setIsVip] = useState(false);
+  const [isVip, setIsVip] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("chess_vip_unlocked") === "true";
+    }
+    return false;
+  });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const unlocked = localStorage.getItem("chess_vip_unlocked") === "true";
-      setIsVip(unlocked);
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -31,19 +30,19 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUn
     setError(null);
     setSuccess(null);
 
-    const cleanCode = code.trim().toLowerCase();
+    const result = validatePromoCode(code);
 
-    if (cleanCode === "chess") {
+    if (result.valid) {
       if (typeof window !== "undefined") {
         localStorage.setItem("chess_vip_unlocked", "true");
       }
       setIsVip(true);
-      setSuccess("🎉 Code Accepted! You have unlocked VIP Lifetime Access for FREE!");
+      setSuccess(result.message || "🎉 Code Accepted! You have unlocked VIP Lifetime Access for FREE!");
       sound.playVictory();
       confetti({ particleCount: 160, spread: 80, origin: { y: 0.5 } });
       if (onVipUnlocked) onVipUnlocked();
     } else {
-      setError("Invalid promo code. (Hint: Try code 'chess')");
+      setError(result.message || "Invalid promo code.");
       sound.playDefeat();
     }
   };

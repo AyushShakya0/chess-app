@@ -1,15 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Chess, Square, Move } from "chess.js";
-import { Chessboard, BoardTheme } from "./board";
+import { Chessboard } from "./board";
 import { sound } from "@/lib/audio/sound";
-import { ChessEvaluator } from "@/lib/engine/evaluator";
 import { engineClient } from "@/lib/engine/engine-client";
-import { Bot, MessageSquare, RefreshCw, Trophy, Flag, Zap, Sparkles, Settings } from "lucide-react";
+import { Bot, RefreshCw, Trophy, Sparkles, Settings } from "lucide-react";
 import confetti from "canvas-confetti";
-import { EvaluationBar, EvalBarMode } from "./evaluation-bar";
+import { EvaluationBar } from "./evaluation-bar";
 import { SettingsModal } from "./settings-modal";
+import { GameReviewModal } from "./game-review-modal";
+import { useChessGame } from "@/lib/chess/use-chess-game";
+import { useSettings } from "@/lib/stores/settings-store";
 
 export interface BotPersona {
   id: string;
@@ -41,127 +43,121 @@ export const BOT_CATALOG: BotPersona[] = [
     depth: 1,
     blunderRate: 0.65,
     dialogs: {
-      start: ["Meow! Is this checkers?", "I like the little horsies!", "Wait, which one is my king?"],
-      goodMove: ["Woah, that piece was shiny!", "Did you do that on purpose?", "Meow?!"],
-      blunder: ["Oopsie! Did I need that bishop?", "Free snack for you! Meow.", "I meant to do that... maybe."],
-      check: ["Hey! Stop chasing my king!", "Meow! Rude!", "Can we cuddle instead of checking?"],
-      win: ["Wait, did I win?! Yay meow!", "I am the grandmaster kitten!", "Purrrr... victory nap time."],
-      lose: ["Good game hooman! Time for tuna.", "You were too fast for my little paws.", "Rematch after my nap!"],
+      start: ["Meow! I found a shiny piece!", "Wait, which one is the horse again?", "Let's play! *paws at board*"],
+      goodMove: ["Ooh, that looked fancy!", "Purrr...", "Did you mean to do that?"],
+      blunder: ["Oopsie! Did I need that?", "Mew... my bishop ran away.", "Wait, undo? No? Okay :("],
+      check: ["A piece is pointing at my King! Meow!", "Is this check? My King is scared!", "Hey, not so loud!"],
+      win: ["Yay! I knocked over all the pieces! Mew!", "Did I win? Where is my treat?", "Purrrr... good game friend!"],
+      lose: ["Hisss... my king took a nap.", "Good game! Can I bat the pawns now?", "You got me! Meow..."],
     },
   },
   {
     id: "hustler",
     name: "Park Hustler",
-    elo: 1300,
+    elo: 1100,
     avatar: "🧢",
-    title: "Speed Gambiteer",
-    description: "Trash-talking speed demon from Washington Square Park.",
-    depth: 2,
-    blunderRate: 0.25,
+    title: "Washington Square Hustler",
+    description: "Trash-talking blitz enthusiast. Plays the Scholar's Mate every time.",
+    depth: 3,
+    blunderRate: 0.28,
     dialogs: {
-      start: ["Five bucks on the clock, let's roll!", "Hope you brought your wallet, friend.", "Clock is ticking!"],
-      goodMove: ["Okay, okay, not bad for an amateur.", "Lucky shot, kid.", "I see what you're trying."],
-      blunder: ["Thanks for the donation!", "You just gave me the whole game, friend!", "Boom! Hand it over."],
-      check: ["Check! Nowhere to run!", "Check! Feel the street heat!", "Watch that king, buddy!"],
-      win: ["Pay up! Better luck next time.", "Too slow for the park! Next!", "That's how we do it downtown."],
-      lose: ["You got me this time! Run it back!", "Double or nothing right now!", "Respect. Good hustle."],
+      start: ["Five bucks says you don't survive 20 moves, kid.", "Touch piece, you move piece. No takebacks in my park.", "Clock's ticking, rookie."],
+      goodMove: ["Hmph. Beginner's luck.", "I gave you that square.", "Cute move. Won't save you."],
+      blunder: ["Free piece! Much obliged, partner.", "That was a gift. Cash or Venmo?", "You sure about that one?"],
+      check: ["Check! Watch the crown!", "Check! Better run that king!", "Boom! King's in the crosshairs!"],
+      win: ["Pay up! Just like that, Washington Square rules.", "Told ya, kid. Next challenger!", "Easiest coffee money I made today."],
+      lose: ["You got lucky today, kid. Rematch right now.", "Whatever, sun was in my eyes.", "Alright, respect. You can actually play."],
     },
   },
   {
     id: "gotham",
-    name: "Gotham Levy",
-    elo: 1850,
+    name: "Gotham Sensei",
+    elo: 1600,
     avatar: "🎙️",
-    title: "International Master",
-    description: "Loves sacrifices, screams in all caps, and hates the London System.",
-    depth: 3,
-    blunderRate: 0.1,
+    title: "The Content Sensei",
+    description: "Energetic IM and streamer. Loves the Vienna, screams at the Caro-Kann.",
+    depth: 4,
+    blunderRate: 0.12,
     dialogs: {
-      start: ["Welcome back to Guess the ELO!", "Please don't play the London System.", "AND WE ARE OFF!"],
-      goodMove: ["Brilliant move?! Is he Stockfish?!", "Oh that is spicy!", "You found the engine line!"],
-      blunder: ["HE SACRIFICES... THE ROOOOOK!!", "WHAT WERE YOU THINKING?!", "A catastrophic blunder!"],
-      check: ["CHECK! The king has no squares!", "Danger levels are off the charts!", "Checkmate is around the corner!"],
-      win: ["Subscribe to the YouTube channel for more wins!", "And that is how it is done!", "Game over! Classic finish."],
-      lose: ["Okay you played like a Grandmaster.", "I'm making a recap video about this.", "GG! Well played."],
+      start: ["WELCOME BACK TO THE CHESSBOARD!", "If you play the London I might cry.", "Let's play some real chess today."],
+      goodMove: ["OKAY! That is a brilliant concept!", "Look at this move! Masterclass!", "HE SACRIFICED... THE ROOOOOK!"],
+      blunder: ["AND HE SACRIFICES... FOR ABSOLUTELY NOTHING!", "What was that?! That's a minus four blunder!", "Call the police, a crime was just committed."],
+      check: ["CHECK! The pressure is real!", "Check! Finding king safety is mandatory!", "Tempo with check! Delicious."],
+      win: ["AND THAT IS CHECKMATE! Subscribe to the channel!", "Clinical conversion. Textbook endgame.", "Hope you learned something today!"],
+      lose: ["You outplayed me. Send that game to Guess the ELO.", "Genuinely superb calculation. Respect.", "Well played... I need some water."],
     },
   },
   {
     id: "hikaru",
     name: "Hikaru Speed",
-    elo: 2450,
+    elo: 2200,
     avatar: "⚡",
-    title: "Super GM & Streamer",
-    description: "Literally takes takes takes. Premoves everything.",
+    title: "Blitz Speed Demon",
+    description: "Fast-talking super-GM. Premoves everything and calculates 15 lines simultaneously.",
     depth: 6,
-    blunderRate: 0.03,
+    blunderRate: 0.04,
     dialogs: {
-      start: ["Alright chat, let's win this quickly.", "Literally takes takes takes.", "I literally don't care."],
-      goodMove: ["Wait, that's actually a decent move.", "Okay, you know some theory.", "Nice find, chat approves."],
-      blunder: ["Yeah that's just completely losing.", "Literally takes, takes, and you resign.", "Chat, look at this blunder."],
-      check: ["Check. King has to run.", "Check! You're in serious trouble.", "Takes, check, wins."],
-      win: ["GG! Let's analyze this in 2 seconds.", "Literally crushed. Next game!", "Thanks for the game!"],
-      lose: ["Wait, did I actually lose?! What?!", "You played insanely well. GG.", "Huge respect, that was clean."],
+      start: ["Take, take, take, and we're totally fine here. Let's go.", "Wait, does this move work? Yeah, it literally does.", "Chat, look at this. Easy game."],
+      goodMove: ["Okay, wait, that's actually a move. Wait, is that good?", "Takes, takes, wait that's pretty sharp.", "Not bad, but I still have counterplay."],
+      blunder: ["Wait, he blundered? Chat, he literally just blundered.", "Takes, takes, queen here and it's completely winning.", "That's just completely losing on the spot."],
+      check: ["Check. Quick tempo.", "Check, king moves, and we push.", "Check! You have only one legal reply."],
+      win: ["Gg, literally completely winning from move 10.", "Thanks for the game, chat said it was GG.", "Takes, takes, mate. Good game!"],
+      lose: ["Wait, what? I missed that? Wow, crazy game, gg.", "Incredible calculation. You're super underrated.", "Gg! Really strong tactical play."],
     },
   },
   {
     id: "magnus",
-    name: "Magnus Endgamer",
-    elo: 2850,
+    name: "Magnus Endboss",
+    elo: 2800,
     avatar: "👑",
-    title: "World Champion",
-    description: "Positionally flawless. Grinds you down to dust.",
+    title: "The Classical World Champion",
+    description: "The GOAT. Grinds you down in 80 moves with ruthless endgame precision.",
     depth: 7,
-    blunderRate: 0.0,
+    blunderRate: 0.01,
     dialogs: {
-      start: ["Let's see what you've got.", "A casual game before dinner.", "White to play and survive."],
-      goodMove: ["Impressive move. Very accurate.", "You have good positional sense.", "Now the real game begins."],
-      blunder: ["That is a decisive mistake.", "Your position is crumbling.", "The endgame is already won for me."],
-      check: ["Check. No counterplay remaining.", "Every escape is covered.", "Precision."],
+      start: ["A draw is not an option.", "Let's see if you can handle the endgame.", "Every piece has a purpose. Show me yours."],
+      goodMove: ["Respectable preparation.", "A solid idea. Let's see your continuation.", "You understand the position."],
+      blunder: ["Inaccurate. The advantage is decisive now.", "A tiny concession, but enough to win.", "That pawn structure is fatally damaged."],
+      check: ["Check. Your king is uncoordinated.", "Check. The king has no comfortable squares.", "Check. Precise defence is required."],
       win: ["Good effort, but positional mastery wins.", "The knight endgame is settled.", "Checkmate."],
       lose: ["Incredible game. You outplayed me completely.", "Remarkable calculation. Well done.", "A true masterpiece."],
     },
   },
 ];
 
+function getRandomLine(arr: string[]): string {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 export const AiBotsPlay: React.FC = () => {
   const [selectedBot, setSelectedBot] = useState<BotPersona>(BOT_CATALOG[2]); // Gotham default
-  const [game, setGame] = useState<Chess>(() => new Chess());
-  const [, setGameVersion] = useState(0);
-  const [theme, setTheme] = useState<BoardTheme>("classic");
-  const [evalMode, setEvalMode] = useState<EvalBarMode>("live");
-  const [autoPromoteToQueen, setAutoPromoteToQueen] = useState(true);
+  const [settings, updateSettings] = useSettings();
+
+  const {
+    game,
+    history: gameHistory,
+    move: executeMove,
+    reset: resetChessGame,
+    lastMove,
+    setLastMove,
+    syncState,
+  } = useChessGame({
+    persistenceKey: "prin_chess_active_game_bots",
+    enableSounds: true,
+  });
+
   const [evalScore, setEvalScore] = useState<number>(0);
   const [isMate, setIsMate] = useState(false);
   const [mateIn, setMateIn] = useState<number | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [chatLog, setChatLog] = useState<{ sender: "bot" | "player"; text: string }[]>([]);
   const [lastBotRemark, setLastBotRemark] = useState<string>("");
   const [gameOver, setGameOver] = useState<string | null>(null);
-  const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
   const [switchedMidGame, setSwitchedMidGame] = useState<string | null>(null);
 
   const botTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Restore stored preferences
-  useEffect(() => {
-    try {
-      const savedTheme = localStorage.getItem("prin_chess_theme") as BoardTheme | null;
-      if (savedTheme && ["classic", "wood", "glass", "neon"].includes(savedTheme)) {
-        setTheme(savedTheme);
-      }
-      const savedEval = localStorage.getItem("prin_chess_eval_mode") as EvalBarMode | null;
-      if (savedEval && ["live", "every-5", "disabled"].includes(savedEval)) {
-        setEvalMode(savedEval);
-      }
-      const savedAutoPromote = localStorage.getItem("prin_chess_auto_queen");
-      if (savedAutoPromote !== null) {
-        setAutoPromoteToQueen(savedAutoPromote === "true");
-      }
-    } catch {
-      // LocalStorage not available in private mode
-    }
-  }, []);
 
   // Clear pending timers on unmount
   useEffect(() => {
@@ -177,24 +173,21 @@ export const AiBotsPlay: React.FC = () => {
     const greeting = getRandomLine(selectedBot.dialogs.start);
     setLastBotRemark(greeting);
     setChatLog([{ sender: "bot", text: greeting }]);
-  }, []);
-
-  const getRandomLine = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
+  }, [selectedBot]);
 
   // Update position evaluation off the main thread via Web Worker
-  const updateEvaluation = async (currentGame: Chess, forced = false) => {
-    if (evalMode === "disabled" && !forced) return;
+  const updateEvaluation = useCallback(
+    async (currentGame: Chess, forced = false) => {
+      if (settings.evalMode === "disabled" && !forced) return;
+      if (settings.evalMode === "every-5" && !forced && currentGame.history().length % 5 !== 0) return;
 
-    const moveCount = currentGame.history().length;
-    if (!forced && evalMode === "every-5" && moveCount % 5 !== 0) {
-      return;
-    }
-
-    const res = await engineClient.getEvaluation(currentGame, 2);
-    setIsMate(res.isMate);
-    setMateIn(res.mateIn);
-    setEvalScore(res.score);
-  };
+      const res = await engineClient.getEvaluation(currentGame, 2);
+      setIsMate(res.isMate);
+      setMateIn(res.mateIn);
+      setEvalScore(res.score);
+    },
+    [settings.evalMode]
+  );
 
   // Switch bot cleanly without resetting the board mid-game
   const handleSelectBot = (newBot: BotPersona) => {
@@ -227,8 +220,7 @@ export const AiBotsPlay: React.FC = () => {
       clearTimeout(botTimeoutRef.current);
       botTimeoutRef.current = null;
     }
-    setGame(new Chess());
-    setGameVersion((v) => v + 1);
+    resetChessGame();
     setIsThinking(false);
     setGameOver(null);
     setLastMove(null);
@@ -276,17 +268,13 @@ export const AiBotsPlay: React.FC = () => {
     }
 
     try {
-      const executed = currentGame.move(chosenMove);
+      const executed = executeMove({
+        from: chosenMove.from as Square,
+        to: chosenMove.to as Square,
+        promotion: chosenMove.promotion,
+      });
+
       if (executed) {
-        if (executed.captured) sound.playCapture();
-        else sound.playMove();
-
-        if (currentGame.inCheck()) {
-          setTimeout(() => sound.playCheck(), 100);
-        }
-
-        setLastMove({ from: executed.from as Square, to: executed.to as Square });
-        setGameVersion((v) => v + 1);
         updateEvaluation(currentGame);
 
         if (currentGame.isCheckmate()) {
@@ -319,14 +307,12 @@ export const AiBotsPlay: React.FC = () => {
     if (currentGame.isCheckmate()) {
       event = "bot won by checkmate";
       fallbackText = getRandomLine(activeBot.dialogs.win);
-      setGameOver(`${activeBot.name} won by Checkmate!`);
-      sound.playDefeat();
     } else if (currentGame.inCheck()) {
-      event = "bot checked opponent king";
+      event = "bot gave check";
       fallbackText = getRandomLine(activeBot.dialogs.check);
     } else if (move.captured) {
-      event = `bot captured player's ${move.captured}`;
-      fallbackText = getRandomLine(activeBot.dialogs.blunder);
+      event = "bot captured a piece";
+      fallbackText = getRandomLine(activeBot.dialogs.goodMove);
     }
 
     // Attempt Gemini Flash API call
@@ -352,10 +338,10 @@ export const AiBotsPlay: React.FC = () => {
     }
   };
 
-  // Player makes move
+  // Player makes move (executed by Chessboard)
   const handlePlayerMove = (m: { from: Square; to: Square; promotion?: string }) => {
     setLastMove({ from: m.from, to: m.to });
-    setGameVersion((v) => v + 1);
+    syncState();
     updateEvaluation(game);
 
     if (game.isCheckmate()) {
@@ -399,58 +385,40 @@ export const AiBotsPlay: React.FC = () => {
                     {selectedBot.elo} ELO
                   </span>
                 </div>
-                <span className="text-[11px] text-slate-400 block -mt-0.5">
-                  {selectedBot.title} • Depth {selectedBot.depth}
-                </span>
+                <span className="text-xs text-slate-400 block -mt-0.5">{selectedBot.title}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               {isThinking && (
-                <div className="flex items-center gap-1.5 text-xs text-blue-400 font-medium animate-pulse">
-                  <Bot className="w-3.5 h-3.5" />
-                  Calculating (d{selectedBot.depth})...
+                <div className="flex items-center gap-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2.5 py-1 rounded-full text-xs font-semibold animate-pulse">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                  Calculating...
                 </div>
               )}
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-colors"
-                title="Match & Board Settings"
-              >
-                <Settings className="w-3.5 h-3.5 text-blue-400" />
-                Settings
-              </button>
-              <button
-                onClick={resetGame}
-                className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-colors"
-                title="Start a fresh match"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                New Game
-              </button>
             </div>
           </div>
 
+          {/* Mid-Game Bot Switch Toast Banner */}
           {switchedMidGame && (
-            <div className="w-full max-w-[620px] mb-2 p-2 bg-blue-500/20 border border-blue-500/40 rounded-xl text-xs font-bold text-blue-300 text-center animate-fade-in flex items-center justify-center gap-2">
-              <Zap className="w-3.5 h-3.5 text-blue-400" />
-              Opponent switched to {switchedMidGame} (Board preserved!)
+            <div className="w-full max-w-[620px] mb-2 bg-gradient-to-r from-purple-900/80 to-blue-900/80 border border-purple-500/60 text-purple-200 px-3.5 py-1.5 rounded-xl text-xs font-bold text-center shadow-lg animate-fade-in flex items-center justify-center gap-2">
+              <span>⚡</span>
+              <span>
+                <strong>{switchedMidGame}</strong> took over the board! Position preserved.
+              </span>
             </div>
           )}
 
-          {/* Chessboard with Evaluation Bar - Scaled to fit perfectly without page scrolling */}
-          <div
-            className="flex items-center justify-center gap-2 sm:gap-3 w-full touch-none select-none overscroll-none"
-            onWheel={(e) => e.stopPropagation()}
-          >
-            {evalMode !== "disabled" && (
+          {/* Board Container with Side Evaluation Bar */}
+          <div className="relative flex items-center justify-center gap-2 w-full">
+            {settings.evalMode !== "disabled" && (
               <EvaluationBar
                 evalScore={evalScore}
                 isMate={isMate}
                 mateIn={mateIn}
                 orientation="white"
                 heightClass="h-[min(88vw,calc(100vh-210px))] sm:h-[min(80vw,calc(100vh-210px))] lg:h-[min(560px,calc(100vh-200px))] max-h-[560px]"
-                mode={evalMode}
+                mode={settings.evalMode}
                 moveCount={game.history().length}
               />
             )}
@@ -460,23 +428,32 @@ export const AiBotsPlay: React.FC = () => {
               orientation="white"
               onMove={handlePlayerMove}
               interactive={game.turn() === "w" && !isThinking && !gameOver}
-              autoPromoteToQueen={autoPromoteToQueen}
-              theme={theme}
+              autoPromoteToQueen={settings.autoQueen}
+              theme={settings.theme}
               lastMove={lastMove}
               boardSizeClass="w-[min(88vw,calc(100vh-210px))] h-[min(88vw,calc(100vh-210px))] sm:w-[min(80vw,calc(100vh-210px))] sm:h-[min(80vw,calc(100vh-210px))] lg:w-[min(560px,calc(100vh-200px))] lg:h-[min(560px,calc(100vh-200px))] max-w-[560px] max-h-[560px] aspect-square"
             />
           </div>
 
           {gameOver && (
-            <div className="mt-3 bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 px-5 py-2 rounded-xl text-xs sm:text-sm font-bold animate-bounce text-center">
-              {gameOver}
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <div className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-center">
+                {gameOver}
+              </div>
+              <button
+                onClick={() => setIsReviewOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg transition-all"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Review Game
+              </button>
             </div>
           )}
         </div>
 
         {/* Right: AI Opponents Selector, Live Banter & Chat */}
         <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-3 w-full lg:max-h-[min(620px,calc(100vh-150px))] lg:overflow-y-auto pr-1">
-          {/* Choose AI Opponent Card (Moved to Right Side) */}
+          {/* Choose AI Opponent Card */}
           <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5 shadow-xl">
             <div className="flex items-center justify-between mb-2 px-1">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
@@ -488,75 +465,54 @@ export const AiBotsPlay: React.FC = () => {
               </span>
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              {BOT_CATALOG.map((bot) => {
-                const isSelected = selectedBot.id === bot.id;
+            <div className="grid grid-cols-5 gap-1.5">
+              {BOT_CATALOG.map((b) => {
+                const isSelected = b.id === selectedBot.id;
                 return (
                   <button
-                    key={bot.id}
-                    onClick={() => handleSelectBot(bot)}
-                    className={`flex items-center justify-between p-2 rounded-xl border text-left transition-all ${
+                    key={b.id}
+                    onClick={() => handleSelectBot(b)}
+                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
                       isSelected
-                        ? "bg-blue-600/25 border-blue-500 shadow-md ring-1 ring-blue-500/50"
-                        : "bg-slate-900/60 border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700"
+                        ? "bg-blue-600 border-blue-500 text-white shadow-md scale-102"
+                        : "bg-slate-900/90 border-slate-750 text-slate-300 hover:bg-slate-800"
                     }`}
                   >
-                    <div className="flex items-center gap-2.5 overflow-hidden">
-                      <span className="text-2xl shrink-0">{bot.avatar}</span>
-                      <div className="overflow-hidden">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-white truncate">{bot.name}</span>
-                          <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded bg-slate-800 text-emerald-400 border border-slate-700">
-                            {bot.elo} ELO
-                          </span>
-                        </div>
-                        <span className="text-[11px] text-slate-400 truncate block">
-                          {bot.title}
-                        </span>
-                      </div>
-                    </div>
-                    {isSelected && (
-                      <div className="w-2 h-2 rounded-full bg-blue-400 shadow-sm shadow-blue-400 shrink-0 ml-1" />
-                    )}
+                    <span className="text-xl mb-1">{b.avatar}</span>
+                    <span className="text-[10px] font-bold truncate w-full text-center">{b.name.split(" ")[0]}</span>
+                    <span className={`text-[9px] font-mono font-semibold ${isSelected ? "text-blue-100" : "text-slate-400"}`}>
+                      {b.elo}
+                    </span>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* Bot Live Reaction Bubble */}
-          <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5 shadow-xl relative overflow-hidden">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-blue-400 uppercase tracking-wider mb-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              Live Bot Banter (Powered by Gemini)
+          {/* Active Bot Dialogue Bubble */}
+          <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-xl relative overflow-hidden">
+            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <span className="text-sm">{selectedBot.avatar}</span>
+              <span>{selectedBot.name}&apos;s Trash Talk</span>
             </div>
-
-            <div className="p-2.5 bg-slate-900/90 border border-slate-700/80 rounded-xl relative">
-              <div className="text-xs sm:text-sm font-medium text-slate-100 italic">
-                "{lastBotRemark || "Make your move!"}"
-              </div>
-            </div>
+            <p className="text-sm font-medium text-slate-200 italic leading-relaxed min-h-[3rem]">
+              &ldquo;{lastBotRemark}&rdquo;
+            </p>
           </div>
 
-          {/* Chat History Box */}
-          <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-3 flex flex-col h-[150px]">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-              <MessageSquare className="w-3.5 h-3.5" />
-              Game Chat
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 text-xs">
-              {chatLog.map((c, i) => (
+          {/* Chat / Banter Log */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 flex-1 flex flex-col shadow-inner">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Game Chat Log</span>
+            <div className="flex-1 overflow-y-auto space-y-2 max-h-[140px] pr-1 scrollbar-thin">
+              {chatLog.map((c, idx) => (
                 <div
-                  key={i}
-                  className={`p-2 rounded-xl max-w-[88%] ${
+                  key={idx}
+                  className={`text-xs p-2.5 rounded-xl leading-relaxed ${
                     c.sender === "bot"
-                      ? "bg-slate-700/80 text-slate-200 self-start"
-                      : "bg-blue-600 text-white self-end ml-auto"
+                      ? "bg-slate-800/80 text-slate-200 border border-slate-700/60"
+                      : "bg-blue-600/30 text-blue-200 border border-blue-500/40 ml-4"
                   }`}
                 >
-                  <span className="font-bold block text-[9px] text-slate-400 mb-0.5">
-                    {c.sender === "bot" ? selectedBot.name : "You"}
-                  </span>
                   {c.text}
                 </div>
               ))}
@@ -571,6 +527,14 @@ export const AiBotsPlay: React.FC = () => {
             >
               <RefreshCw className="w-3.5 h-3.5" />
               New Game
+            </button>
+            <button
+              onClick={() => setIsReviewOpen(true)}
+              className="flex items-center justify-center gap-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border border-indigo-500 shadow-md transition-all"
+              title="Review Game Analysis"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Review
             </button>
             <button
               onClick={() => setIsSettingsOpen(true)}
@@ -588,34 +552,27 @@ export const AiBotsPlay: React.FC = () => {
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
-        theme={theme}
-        onThemeChange={(newTheme) => {
-          setTheme(newTheme);
-          try {
-            localStorage.setItem("prin_chess_theme", newTheme);
-          } catch {}
-        }}
-        evalMode={evalMode}
+        theme={settings.theme}
+        onThemeChange={(newTheme) => updateSettings({ theme: newTheme })}
+        evalMode={settings.evalMode}
         onEvalModeChange={(newMode) => {
-          setEvalMode(newMode);
-          try {
-            localStorage.setItem("prin_chess_eval_mode", newMode);
-          } catch {}
+          updateSettings({ evalMode: newMode });
           if (newMode !== "disabled") {
             updateEvaluation(game, true);
           }
         }}
         activeBotName={selectedBot.name}
         activeBotDepth={selectedBot.depth}
-        autoPromoteToQueen={autoPromoteToQueen}
-        onAutoPromoteChange={(val) => {
-          setAutoPromoteToQueen(val);
-          try {
-            localStorage.setItem("prin_chess_auto_queen", String(val));
-          } catch {}
-        }}
+        autoPromoteToQueen={settings.autoQueen}
+        onAutoPromoteChange={(val) => updateSettings({ autoQueen: val })}
+      />
+
+      {/* Full Game Review Modal */}
+      <GameReviewModal
+        isOpen={isReviewOpen}
+        onClose={() => setIsReviewOpen(false)}
+        history={game.history()}
       />
     </div>
   );
 };
-

@@ -17,12 +17,87 @@ class SoundEngine {
     return this.ctx;
   }
 
+  private bossMusicInterval: NodeJS.Timeout | null = null;
+  private bossDroneOsc: OscillatorNode | null = null;
+
   public setEnabled(val: boolean) {
     this.enabled = val;
+    if (!val) {
+      this.stopBossMusic();
+    }
+  }
+
+  public isEnabled(): boolean {
+    return this.enabled;
+  }
+
+  public getVolume(): number {
+    return this.volume;
   }
 
   public setVolume(val: number) {
     this.volume = Math.max(0, Math.min(1, val));
+  }
+
+  // Unified Boss Arena Synthesizer
+  public startBossMusic() {
+    if (!this.enabled) return;
+    const ctx = this.initContext();
+    if (!ctx) return;
+
+    this.stopBossMusic();
+
+    // Low drone
+    const bassOsc = ctx.createOscillator();
+    const bassGain = ctx.createGain();
+    bassOsc.type = "sawtooth";
+    bassOsc.frequency.setValueAtTime(55, ctx.currentTime);
+    bassGain.gain.setValueAtTime(this.volume * 0.3, ctx.currentTime);
+    bassOsc.connect(bassGain);
+    bassGain.connect(ctx.destination);
+    bassOsc.start();
+    this.bossDroneOsc = bassOsc;
+
+    const chords = [
+      [110, 130.81, 164.81],
+      [103.83, 123.47, 155.56],
+      [116.54, 146.83, 174.61],
+      [98.0, 123.47, 146.83],
+    ];
+
+    let chordIdx = 0;
+    this.bossMusicInterval = setInterval(() => {
+      if (!this.enabled) return;
+      const activeChord = chords[chordIdx % chords.length];
+      chordIdx++;
+
+      activeChord.forEach((freq) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(freq * 1.5, ctx.currentTime);
+        gain.gain.setValueAtTime(this.volume * 0.18, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 1.25);
+      });
+    }, 1800);
+  }
+
+  public stopBossMusic() {
+    if (this.bossMusicInterval) {
+      clearInterval(this.bossMusicInterval);
+      this.bossMusicInterval = null;
+    }
+    if (this.bossDroneOsc) {
+      try {
+        this.bossDroneOsc.stop();
+        this.bossDroneOsc.disconnect();
+      } catch {}
+      this.bossDroneOsc = null;
+    }
   }
 
   // Soft wood tap for standard moves

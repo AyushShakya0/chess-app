@@ -17,76 +17,19 @@ export const BossMode: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Web Audio Procedural Boss Theme Synthesizer
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const musicIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const startBossMusic = () => {
-    if (typeof window === "undefined") return;
-    if (!audioCtxRef.current) {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      audioCtxRef.current = new AudioCtx();
+  const toggleBossMusic = () => {
+    if (isPlayingMusic) {
+      sound.stopBossMusic();
+      setIsPlayingMusic(false);
+    } else {
+      sound.startBossMusic();
+      setIsPlayingMusic(true);
     }
-    const ctx = audioCtxRef.current;
-    if (ctx.state === "suspended") ctx.resume();
-
-    setIsPlayingMusic(true);
-
-    // Ominous low drone
-    const bassOsc = ctx.createOscillator();
-    const bassGain = ctx.createGain();
-    bassOsc.type = "sawtooth";
-    bassOsc.frequency.setValueAtTime(55, ctx.currentTime); // A1 note
-    bassGain.gain.setValueAtTime(0.18, ctx.currentTime);
-    bassOsc.connect(bassGain);
-    bassGain.connect(ctx.destination);
-    bassOsc.start();
-
-    // Epic brass stabs pattern
-    const chords = [
-      [110, 130.81, 164.81], // A minor
-      [103.83, 123.47, 155.56], // G# diminished
-      [116.54, 146.83, 174.61], // Bb major
-      [98.0, 123.47, 146.83], // G minor
-    ];
-
-    let chordIdx = 0;
-    musicIntervalRef.current = setInterval(() => {
-      const activeChord = chords[chordIdx % chords.length];
-      chordIdx++;
-
-      activeChord.forEach((freq) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-
-        osc.type = "sawtooth";
-        osc.frequency.setValueAtTime(freq * 1.5, ctx.currentTime);
-
-        gain.gain.setValueAtTime(0.12, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.2);
-
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-
-        osc.start();
-        osc.stop(ctx.currentTime + 1.25);
-      });
-    }, 1400);
-  };
-
-  const stopBossMusic = () => {
-    if (musicIntervalRef.current) clearInterval(musicIntervalRef.current);
-    if (audioCtxRef.current) {
-      audioCtxRef.current.close();
-      audioCtxRef.current = null;
-    }
-    setIsPlayingMusic(false);
   };
 
   useEffect(() => {
     return () => {
-      if (musicIntervalRef.current) clearInterval(musicIntervalRef.current);
-      if (audioCtxRef.current) audioCtxRef.current.close();
+      sound.stopBossMusic();
     };
   }, []);
 
@@ -139,7 +82,7 @@ export const BossMode: React.FC = () => {
 
       {/* Music Toggle */}
       <button
-        onClick={isPlayingMusic ? stopBossMusic : startBossMusic}
+        onClick={toggleBossMusic}
         className="absolute top-6 right-6 z-20 flex items-center gap-2 bg-red-950/80 hover:bg-red-900/80 border border-red-700/80 text-red-300 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-lg backdrop-blur-md"
       >
         {isPlayingMusic ? (

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Chess, Square, Move } from "chess.js";
 import { ChessPiece, PieceType, PieceColor } from "./pieces";
 import { sound } from "@/lib/audio/sound";
+import { useSettings } from "@/lib/stores/settings-store";
 
 export type BoardTheme = "classic" | "wood" | "glass" | "neon";
 
@@ -24,6 +25,16 @@ interface QueuedPremove {
   promotion?: string;
 }
 
+interface PointerDragState {
+  square: Square;
+  piece: { type: PieceType; color: PieceColor };
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+  active: boolean;
+}
+
 interface ChessboardProps {
   game: Chess;
   orientation?: "white" | "black";
@@ -32,6 +43,7 @@ interface ChessboardProps {
   premoveEnabled?: boolean;
   autoPromoteToQueen?: boolean;
   showLegalMoves?: boolean;
+  showCoordinates?: boolean;
   theme?: BoardTheme;
   isCheck?: boolean;
   lastMove?: { from: Square; to: Square } | null;
@@ -53,6 +65,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   premoveEnabled = true,
   autoPromoteToQueen = true,
   showLegalMoves = true,
+  showCoordinates: propShowCoordinates,
   theme = "classic",
   isCheck = false,
   lastMove = null,
@@ -62,9 +75,14 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   boardSizeClass,
   customMoveHandler,
 }) => {
+  const [globalSettings] = useSettings();
+  const showCoordinates = typeof propShowCoordinates === "boolean" ? propShowCoordinates : globalSettings.showCoordinates;
+
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [legalMoves, setLegalMoves] = useState<Square[]>([]);
   const [draggedSquare, setDraggedSquare] = useState<Square | null>(null);
+  const [pointerDrag, setPointerDrag] = useState<PointerDragState | null>(null);
+  const [focusedSquare, setFocusedSquare] = useState<Square>(orientation === "black" ? "e7" : "e2");
   const [premove, setPremove] = useState<QueuedPremove | null>(null);
   const [arrows, setArrows] = useState<BoardArrow[]>([]);
   const [highlights, setHighlights] = useState<BoardHighlight[]>([]);
@@ -119,7 +137,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   };
 
   // Execute or validate move
-  const attemptMove = (from: Square, to: Square, promotionChoice?: string): boolean => {
+  const attemptMove = useCallback((from: Square, to: Square, promotionChoice?: string): boolean => {
     const piece = game.get(from);
     if (!piece) return false;
 
@@ -140,8 +158,8 @@ export const Chessboard: React.FC<ChessboardProps> = ({
       }
 
       // Check legality first with chess.js
-      const legalMoves = game.moves({ square: from, verbose: true }) as Move[];
-      const legalTargetMoves = legalMoves.filter((m) => m.to === to);
+      const availableLegalMoves = game.moves({ square: from, verbose: true }) as Move[];
+      const legalTargetMoves = availableLegalMoves.filter((m) => m.to === to);
       if (legalTargetMoves.length === 0) {
         return false;
       }
@@ -164,7 +182,6 @@ export const Chessboard: React.FC<ChessboardProps> = ({
         });
 
         if (move) {
-          // Play sound
           if (move.captured) {
             sound.playCapture();
           } else if (move.flags.includes("k") || move.flags.includes("q")) {
@@ -187,7 +204,6 @@ export const Chessboard: React.FC<ChessboardProps> = ({
             }
           }
 
-          // Clear annotations and selections
           setSelectedSquare(null);
           setLegalMoves([]);
           setArrows([]);
@@ -209,7 +225,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     }
 
     return false;
-  };
+  }, [game, allowedColor, customMoveHandler, autoPromoteToQueen, onMove, premoveEnabled]);
 
   // Attempt to execute queued premove on turn change
   useEffect(() => {
@@ -223,13 +239,12 @@ export const Chessboard: React.FC<ChessboardProps> = ({
         }
       }
     }
-  }, [game.fen(), premove, interactive, orientation]);
+  }, [game, premove, interactive, orientation, attemptMove]);
 
   // Click on square
   const handleSquareClick = (sq: Square) => {
     if (!interactive) return;
 
-    // Clear right-click annotations on left click
     if (arrows.length > 0 || highlights.length > 0) {
       setArrows([]);
       setHighlights([]);
@@ -263,78 +278,187 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     setLegalMoves([]);
   };
 
-  // Drag & drop handlers
+  // Keyboard navigation & movement
+  const handleSquareKeyDown = (e: React.KeyboardEvent, square: Square) => {
+    const fileChar = square[0];
+    const rankNum = parseInt(square[1], 10);
+    const fileIdx = FILES.indexOf(fileChar);
+
+    let nextSquare: Square | null = null;
+    const isUp = isFlipped ? -1 : 1;
+    const isRight = isFlipped ? -1 : 1;
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const newRank = rankNum + isUp;
+      if (newRank >= 1 && newRank <= 8) nextSquare = `${fileChar}${newRank}` as Square;
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const newRank = rankNum - isUp;
+      if (newRank >= 1 && newRank <= 8) nextSquare = `${fileChar}${newRank}` as Square;
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      const newFileIdx = fileIdx - isRight;
+      if (newFileIdx >= 0 && newFileIdx < 8) nextSquare = `${FILES[newFileIdx]}${rankNum}` as Square;
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      const newFileIdx = fileIdx + isRight;
+      if (newFileIdx >= 0 && newFileIdx < 8) nextSquare = `${FILES[newFileIdx]}${rankNum}` as Square;
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleSquareClick(square);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setSelectedSquare(null);
+      setLegalMoves([]);
+      setArrows([]);
+      setHighlights([]);
+    }
+
+    if (nextSquare) {
+      setFocusedSquare(nextSquare);
+      const el = boardRef.current?.querySelector(`[data-square="${nextSquare}"]`) as HTMLElement;
+      el?.focus();
+    }
+  };
+
+  // Pointer Drag events for Touch Screens & Tablets
+  const handleSquarePointerDown = (e: React.PointerEvent, square: Square) => {
+    if (e.button !== 0 || !interactive) return;
+    const piece = game.get(square);
+    if (!piece) return;
+
+    const isTurn = (piece.color === "w" && game.turn() === "w") || (piece.color === "b" && game.turn() === "b");
+    if (!isTurn && (!premoveEnabled || allowedColor)) return;
+    if (allowedColor && piece.color !== allowedColor) return;
+
+    setPointerDrag({
+      square,
+      piece: { type: piece.type as PieceType, color: piece.color as PieceColor },
+      startX: e.clientX,
+      startY: e.clientY,
+      currentX: e.clientX,
+      currentY: e.clientY,
+      active: false,
+    });
+
+    setSelectedSquare(square);
+    const moves = game.moves({ square, verbose: true }) as Move[];
+    setLegalMoves(moves.map((m) => m.to as Square));
+  };
+
+  const handleBoardPointerMove = (e: React.PointerEvent) => {
+    if (!pointerDrag) return;
+    const dist = Math.hypot(e.clientX - pointerDrag.startX, e.clientY - pointerDrag.startY);
+    setPointerDrag((prev) =>
+      prev
+        ? {
+            ...prev,
+            currentX: e.clientX,
+            currentY: e.clientY,
+            active: prev.active || dist > 6,
+          }
+        : null
+    );
+  };
+
+  const handleBoardPointerUp = (e: React.PointerEvent) => {
+    if (!pointerDrag) return;
+    const wasDragging = pointerDrag.active;
+    const fromSquare = pointerDrag.square;
+    setPointerDrag(null);
+
+    if (wasDragging) {
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const targetEl = el?.closest("[data-square]");
+      const toSquare = targetEl?.getAttribute("data-square") as Square | null;
+
+      if (toSquare && toSquare !== fromSquare) {
+        attemptMove(fromSquare, toSquare);
+      }
+    }
+  };
+
+  // HTML5 Drag Handlers (Desktop backup)
   const handleDragStart = (e: React.DragEvent, sq: Square) => {
     if (!interactive) return;
     const piece = game.get(sq);
-    if (piece && allowedColor && piece.color !== allowedColor) return;
+    if (!piece) return;
+
+    if (allowedColor && piece.color !== allowedColor) return;
+
+    const isCurrentTurn = (piece.color === "w" && game.turn() === "w") || (piece.color === "b" && game.turn() === "b");
+    if (!isCurrentTurn && (!premoveEnabled || allowedColor)) return;
+
     setDraggedSquare(sq);
-    handleSquareClick(sq);
+    setSelectedSquare(sq);
+    const moves = game.moves({ square: sq, verbose: true }) as Move[];
+    setLegalMoves(moves.map((m) => m.to as Square));
+
+    e.dataTransfer.setData("text/plain", sq);
+    e.dataTransfer.effectAllowed = "move";
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
   };
 
-  const handleDrop = (e: React.DragEvent, sq: Square) => {
+  const handleDrop = (e: React.DragEvent, toSq: Square) => {
     e.preventDefault();
-    if (draggedSquare && draggedSquare !== sq) {
-      attemptMove(draggedSquare, sq);
+    if (!interactive) return;
+    const fromSq = (e.dataTransfer.getData("text/plain") || draggedSquare) as Square;
+    if (fromSq && fromSq !== toSq) {
+      attemptMove(fromSq, toSq);
     }
     setDraggedSquare(null);
   };
 
-  // Right-click arrows & highlights
+  // Right-click annotations
   const handleMouseDown = (e: React.MouseEvent, sq: Square) => {
     if (e.button === 2) {
-      // Right click
-      e.preventDefault();
       setRightDragStart(sq);
     }
   };
 
   const handleMouseUp = (e: React.MouseEvent, sq: Square) => {
-    if (e.button === 2) {
-      e.preventDefault();
+    if (e.button === 2 && rightDragStart) {
       const color = getModifierColor(e);
-
-      if (rightDragStart && rightDragStart !== sq) {
-        // Toggle arrow
-        setArrows((prev) => {
-          const exists = prev.some((a) => a.from === rightDragStart && a.to === sq);
-          if (exists) {
-            return prev.filter((a) => !(a.from === rightDragStart && a.to === sq));
-          }
-          return [...prev, { from: rightDragStart, to: sq, color }];
-        });
-      } else if (rightDragStart === sq) {
-        // Toggle square highlight
+      if (rightDragStart === sq) {
         setHighlights((prev) => {
-          const exists = prev.some((h) => h.square === sq);
+          const exists = prev.some((h) => h.square === sq && h.color === color);
           if (exists) {
             return prev.filter((h) => h.square !== sq);
+          } else {
+            return [...prev.filter((h) => h.square !== sq), { square: sq, color }];
           }
-          return [...prev, { square: sq, color }];
         });
-        // Cancel queued premove if right-clicked
-        if (premove) {
-          setPremove(null);
-        }
+      } else {
+        const from = rightDragStart;
+        const to = sq;
+        setArrows((prev) => {
+          const exists = prev.some((a) => a.from === from && a.to === to && a.color === color);
+          if (exists) {
+            return prev.filter((a) => !(a.from === from && a.to === to));
+          } else {
+            return [...prev.filter((a) => !(a.from === from && a.to === to)), { from, to, color }];
+          }
+        });
       }
       setRightDragStart(null);
     }
   };
 
-  // Find King square for check warning
   const getKingInCheckSquare = (): Square | null => {
-    if (!game.inCheck()) return null;
-    const board = game.board();
     const turn = game.turn();
+    const board = game.board();
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
-        const piece = board[r][c];
-        if (piece && piece.type === "k" && piece.color === turn) {
-          return `${FILES[c]}${8 - r}` as Square;
+        const p = board[r][c];
+        if (p && p.type === "k" && p.color === turn) {
+          const file = String.fromCharCode(97 + c);
+          const rank = String(8 - r);
+          return `${file}${rank}` as Square;
         }
       }
     }
@@ -344,9 +468,16 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   const kingCheckSquare = isCheck || game.inCheck() ? getKingInCheckSquare() : null;
 
   return (
-    <div className="relative inline-block select-none shadow-2xl rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900">
+    <div
+      className="relative inline-block select-none shadow-2xl rounded-lg overflow-hidden border border-slate-700/50 bg-slate-900 touch-none"
+      onPointerMove={handleBoardPointerMove}
+      onPointerUp={handleBoardPointerUp}
+      onPointerCancel={() => setPointerDrag(null)}
+    >
       <div
         ref={boardRef}
+        role="grid"
+        aria-label={`Interactive chessboard, ${orientation} perspective`}
         onContextMenu={(e) => e.preventDefault()}
         className={`grid grid-cols-8 grid-rows-8 relative ${
           boardSizeClass || "w-[320px] h-[320px] sm:w-[460px] sm:h-[460px] md:w-[540px] md:h-[540px] lg:w-[600px] lg:h-[600px]"
@@ -364,16 +495,32 @@ export const Chessboard: React.FC<ChessboardProps> = ({
             const isPremove = premove && (premove.from === square || premove.to === square);
             const isKingCheck = kingCheckSquare === square;
             const highlight = allHighlights.find((h) => h.square === square);
+            const isFocused = focusedSquare === square;
+
+            const pieceDescription = piece
+              ? `${piece.color === "w" ? "white" : "black"} ${piece.type}`
+              : "empty";
+
+            const squareAria = `${square}, ${pieceDescription}${isKingCheck ? ", in check" : ""}${
+              isLegalMove ? ", legal move" : ""
+            }`;
 
             return (
               <div
                 key={square}
+                data-square={square}
+                role="gridcell"
+                tabIndex={isFocused ? 0 : -1}
+                aria-label={squareAria}
+                aria-selected={isSelected}
                 onClick={() => handleSquareClick(square)}
+                onKeyDown={(e) => handleSquareKeyDown(e, square)}
+                onPointerDown={(e) => handleSquarePointerDown(e, square)}
                 onMouseDown={(e) => handleMouseDown(e, square)}
                 onMouseUp={(e) => handleMouseUp(e, square)}
                 onDragOver={handleDragOver}
                 onDrop={(e) => handleDrop(e, square)}
-                className={`relative flex items-center justify-center cursor-pointer transition-colors ${getSquareColor(
+                className={`relative flex items-center justify-center cursor-pointer transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400 ${getSquareColor(
                   isLight
                 )}`}
               >
@@ -424,7 +571,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
                 )}
 
                 {/* Rank coordinates (left column) */}
-                {fileIndex === 0 && (
+                {showCoordinates && fileIndex === 0 && (
                   <span
                     className={`absolute top-0.5 left-1 text-[10px] sm:text-xs font-bold pointer-events-none ${
                       isLight ? "text-slate-700/70" : "text-white/80"
@@ -435,7 +582,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
                 )}
 
                 {/* File coordinates (bottom row) */}
-                {rankIndex === 7 && (
+                {showCoordinates && rankIndex === 7 && (
                   <span
                     className={`absolute bottom-0.5 right-1 text-[10px] sm:text-xs font-bold pointer-events-none ${
                       isLight ? "text-slate-700/70" : "text-white/80"
@@ -525,9 +672,26 @@ export const Chessboard: React.FC<ChessboardProps> = ({
           })}
         </svg>
 
-        {/* Under-promotion selection modal */}
+        {/* Floating Follower Piece for Touch Pointer Drag */}
+        {pointerDrag?.active && (
+          <div
+            className="fixed pointer-events-none z-50 transform -translate-x-1/2 -translate-y-1/2"
+            style={{ left: pointerDrag.currentX, top: pointerDrag.currentY }}
+          >
+            <div className="w-16 h-16 drop-shadow-2xl scale-110">
+              <ChessPiece type={pointerDrag.piece.type} color={pointerDrag.piece.color} size={64} />
+            </div>
+          </div>
+        )}
+
+        {/* Under-promotion selection modal with ARIA dialog semantics */}
         {promotionPending && (
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm z-30 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm z-30 flex items-center justify-center p-4 animate-fade-in"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pawn promotion selection"
+          >
             <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 shadow-2xl flex flex-col items-center gap-3">
               <span className="text-sm font-semibold text-white">Promote Pawn To:</span>
               <div className="flex gap-2">
@@ -539,7 +703,8 @@ export const Chessboard: React.FC<ChessboardProps> = ({
                       setPromotionPending(null);
                       attemptMove(from, to, pType);
                     }}
-                    className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors border border-slate-600"
+                    aria-label={`Promote to ${pType === "q" ? "Queen" : pType === "r" ? "Rook" : pType === "b" ? "Bishop" : "Knight"}`}
+                    className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors border border-slate-600 focus:ring-2 focus:ring-blue-400"
                   >
                     <ChessPiece type={pType} color={game.turn() === "w" ? "w" : "b"} size={44} />
                   </button>
@@ -552,4 +717,3 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     </div>
   );
 };
-

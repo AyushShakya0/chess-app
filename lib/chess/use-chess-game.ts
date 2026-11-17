@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Chess, Square, Move } from "chess.js";
 import { sound } from "@/lib/audio/sound";
+import { setActiveGamePosition } from "@/lib/stores/active-game-store";
 
 export interface ChessGameStatus {
   isGameOver: boolean;
@@ -18,6 +19,7 @@ export interface UseChessGameOptions {
   initialFen?: string;
   initialPgn?: string;
   enableSounds?: boolean;
+  persistenceKey?: string;
 }
 
 export interface MoveInput {
@@ -42,6 +44,7 @@ export interface UseChessGameReturn {
   loadFen: (fen: string) => boolean;
   setLastMove: (lastMove: { from: Square; to: Square } | null) => void;
   bumpVersion: () => void;
+  syncState: (moveExecuted?: Move | null) => void;
 }
 
 function deriveStatus(game: Chess): ChessGameStatus {
@@ -57,49 +60,68 @@ function deriveStatus(game: Chess): ChessGameStatus {
 }
 
 export function useChessGame(options: UseChessGameOptions = {}): UseChessGameReturn {
-  const { initialFen, initialPgn, enableSounds = true } = options;
+  const { initialFen, initialPgn, enableSounds = true, persistenceKey } = options;
 
-  // Single persistent Chess instance that preserves move history
-  const gameRef = useRef<Chess>(
-    initialPgn
-      ? (() => {
-          const c = new Chess();
-          try {
-            c.loadPgn(initialPgn);
-          } catch {}
+  // Single persistent Chess instance held in state (avoiding ref-during-render flags)
+  const [game] = useState<Chess>(() => {
+    const c = new Chess();
+    if (typeof window !== "undefined" && persistenceKey) {
+      try {
+        const saved = localStorage.getItem(persistenceKey);
+        if (saved && saved.trim()) {
+          c.loadPgn(saved);
           return c;
-        })()
-      : initialFen
-      ? new Chess(initialFen)
-      : new Chess()
-  );
+        }
+      } catch {}
+    }
+    if (initialPgn) {
+      try {
+        c.loadPgn(initialPgn);
+        return c;
+      } catch {}
+    }
+    if (initialFen) {
+      try {
+        c.load(initialFen);
+        return c;
+      } catch {}
+    }
+    return c;
+  });
 
   const [version, setVersion] = useState(0);
-  const [fen, setFen] = useState<string>(() => gameRef.current.fen());
-  const [turn, setTurn] = useState<"w" | "b">(() => gameRef.current.turn());
-  const [history, setHistory] = useState<string[]>(() => gameRef.current.history());
-  const [pgn, setPgn] = useState<string>(() => gameRef.current.pgn());
+  const [fen, setFen] = useState<string>(() => game.fen());
+  const [turn, setTurn] = useState<"w" | "b">(() => game.turn());
+  const [history, setHistory] = useState<string[]>(() => game.history());
+  const [pgn, setPgn] = useState<string>(() => game.pgn());
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
-  const [status, setStatus] = useState<ChessGameStatus>(() => deriveStatus(gameRef.current));
+  const [status, setStatus] = useState<ChessGameStatus>(() => deriveStatus(game));
 
   const syncState = useCallback((moveExecuted?: Move | null) => {
-    const g = gameRef.current;
-    setFen(g.fen());
-    setTurn(g.turn());
-    setHistory(g.history());
-    setPgn(g.pgn());
-    setStatus(deriveStatus(g));
+    setFen(game.fen());
+    setTurn(game.turn());
+    setHistory(game.history());
+    const currentPgn = game.pgn();
+    setPgn(currentPgn);
+    setStatus(deriveStatus(game));
     if (moveExecuted) {
       setLastMove({ from: moveExecuted.from as Square, to: moveExecuted.to as Square });
     }
     setVersion((v) => v + 1);
-  }, []);
+
+    if (typeof window !== "undefined" && persistenceKey) {
+      try {
+        localStorage.setItem(persistenceKey, currentPgn);
+      } catch {}
+    }
+
+    setActiveGamePosition(game.fen(), currentPgn, persistenceKey || "custom");
+  }, [game, persistenceKey]);
 
   const move = useCallback(
     (moveInput: string | MoveInput): Move | null => {
-      const g = gameRef.current;
       try {
-        const executed = g.move(moveInput);
+        const executed = game.move(moveInput);
         if (!executed) return null;
 
         if (enableSounds) {
@@ -111,7 +133,7 @@ export function useChessGame(options: UseChessGameOptions = {}): UseChessGameRet
             sound.playMove();
           }
 
-          if (g.inCheck()) {
+          if (game.inCheck()) {
             setTimeout(() => sound.playCheck(), 100);
           }
         }
@@ -122,84 +144,77 @@ export function useChessGame(options: UseChessGameOptions = {}): UseChessGameRet
         return null;
       }
     },
-    [enableSounds, syncState]
+    [game, enableSounds, syncState]
   );
 
   const undo = useCallback((): Move | null => {
-    const g = gameRef.current;
-    const undone = g.undo();
-    if (undone) {
-      const hist = g.history({ verbose: true });
-      if (hist.length > 0) {
-        const prev = hist[hist.length - 1];
-        setLastMove({ from: prev.from as Square, to: prev.to as Square });
-      } else {
-        setLastMove(null);
+    try {
+      const undone = game.undo();
+      if (undone) {
+        if (enableSounds) sound.playMove();
+        syncState();
       }
-      syncState(null);
-      if (enableSounds) {
-        sound.playMove();
-      }
+      return undone;
+    } catch {
+      return null;
     }
-    return undone;
-  }, [enableSounds, syncState]);
+  }, [game, enableSounds, syncState]);
 
   const reset = useCallback(
     (newFen?: string) => {
-      if (newFen) {
-        gameRef.current = new Chess(newFen);
-      } else {
-        gameRef.current = new Chess();
-      }
-      setLastMove(null);
-      syncState(null);
+      try {
+        if (newFen) {
+          game.load(newFen);
+        } else {
+          game.reset();
+        }
+        setLastMove(null);
+        syncState();
+
+        if (typeof window !== "undefined" && persistenceKey) {
+          try {
+            localStorage.removeItem(persistenceKey);
+          } catch {}
+        }
+      } catch {}
     },
-    [syncState]
+    [game, persistenceKey, syncState]
   );
 
   const loadPgn = useCallback(
     (newPgn: string): boolean => {
       try {
-        const next = new Chess();
-        next.loadPgn(newPgn);
-        gameRef.current = next;
-        const hist = next.history({ verbose: true });
-        if (hist.length > 0) {
-          const prev = hist[hist.length - 1];
-          setLastMove({ from: prev.from as Square, to: prev.to as Square });
-        } else {
-          setLastMove(null);
-        }
-        syncState(null);
+        game.loadPgn(newPgn);
+        setLastMove(null);
+        syncState();
         return true;
       } catch {
         return false;
       }
     },
-    [syncState]
+    [game, syncState]
   );
 
   const loadFen = useCallback(
     (newFen: string): boolean => {
       try {
-        const next = new Chess(newFen);
-        gameRef.current = next;
+        game.load(newFen);
         setLastMove(null);
-        syncState(null);
+        syncState();
         return true;
       } catch {
         return false;
       }
     },
-    [syncState]
+    [game, syncState]
   );
 
   const bumpVersion = useCallback(() => {
-    syncState(null);
-  }, [syncState]);
+    setVersion((v) => v + 1);
+  }, []);
 
   return {
-    game: gameRef.current,
+    game,
     version,
     fen,
     turn,
@@ -214,6 +229,6 @@ export function useChessGame(options: UseChessGameOptions = {}): UseChessGameRet
     loadFen,
     setLastMove,
     bumpVersion,
+    syncState,
   };
 }
-

@@ -81,6 +81,14 @@ export interface EvaluatedMove {
   comment?: string;
 }
 
+export interface FullGameAnalysis {
+  evaluatedMoves: EvaluatedMove[];
+  whiteAccuracy: number;
+  blackAccuracy: number;
+  whiteStats: Record<MoveGrade, number>;
+  blackStats: Record<MoveGrade, number>;
+}
+
 export class ChessEvaluator {
   // Evaluates static board position from White's perspective (positive = White leads)
   // Checkmates are discounted by ply distance to strongly prefer the fastest checkmate

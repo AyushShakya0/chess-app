@@ -105,16 +105,16 @@ export const PuzzleArena: React.FC = () => {
 
   // Puzzle Streak States (1 life, progressive difficulty, personal best)
   const [streakScore, setStreakScore] = useState(0);
-  const [bestStreak, setBestStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("prin_chess_best_streak");
+        if (saved) return parseInt(saved, 10) || 0;
+      } catch {}
+    }
+    return 0;
+  });
   const [streakEnded, setStreakEnded] = useState(false);
-
-  // Load personal best streak from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("prin_chess_best_streak");
-      if (saved) setBestStreak(parseInt(saved, 10) || 0);
-    } catch {}
-  }, []);
 
   // Initialize or reset puzzle when index or puzzle changes
   useEffect(() => {

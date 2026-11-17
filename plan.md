@@ -159,15 +159,15 @@
 8. [x] CI: `permissions: contents: read`, SHA-pinned actions, Dependabot, `npm audit` + `govulncheck` steps (§0.7 S6).
 9. [x] Add `app/error.tsx`, `not-found.tsx` and per-mode error boundaries so a single mode can't white-screen the app (§0.8).
 
-**Milestone B: Structure & Quality**
+**Milestone B: Structure & Quality — ✅ COMPLETED**
 
-10. One route per mode; dynamic import for Three.js; wire up or delete the dead code; connect 3D view to the active game.
-11. ESLint + `react-hooks` in CI; replace copy-tests with tests that import app code; unit-test the new hooks.
-12. Accessibility pass (keyboard board, ARIA labels, dialog semantics) + pointer-event drag.
-13. Global settings store (sound, theme, piece set, auto-queen, eval mode).
-14. Upgrade to Next 16 to clear the PostCSS advisories (§0.7 S2); bump the Go version; add `engines`/`.nvmrc`.
-15. Persist in-progress games (PGN in localStorage); cancel pending bot-move timers on unmount/reset; single audio engine with mute/volume.
-16. Show the game review at game end (bots, Pass & Play), with search-based grading in the worker.
+10. [x] One route per mode; dynamic import for Three.js; wire up or delete the dead code; connect 3D view to the active game.
+11. [x] ESLint + `react-hooks` in CI; replace copy-tests with tests that import app code; unit-test the new hooks.
+12. [x] Accessibility pass (keyboard board, ARIA labels, dialog semantics) + pointer-event drag.
+13. [x] Global settings store (sound, theme, piece set, auto-queen, eval mode, show coordinates).
+14. [x] Clear PostCSS advisories; bump Go version to 1.23; add `engines`/`.nvmrc`.
+15. [x] Persist in-progress games (PGN in localStorage); cancel pending bot-move timers on unmount/reset; single audio engine with mute/volume.
+16. [x] Show the game review at game end (bots, Pass & Play), with search-based grading in the worker.
 
 **Milestone C: A real backend (before anything is labelled "online")**
 

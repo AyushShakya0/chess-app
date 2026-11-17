@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { X, Trophy, Sparkles, AlertTriangle, CheckCircle2, ChevronRight, ChevronLeft } from "lucide-react";
-import { ChessEvaluator, EvaluatedMove, MoveGrade } from "@/lib/engine/evaluator";
+import React, { useState, useEffect } from "react";
+import { X, Sparkles, Loader2, Award, Zap, AlertTriangle } from "lucide-react";
+import { EvaluatedMove, MoveGrade, FullGameAnalysis } from "@/lib/engine/evaluator";
+import { engineClient } from "@/lib/engine/engine-client";
 
 interface GameReviewModalProps {
   isOpen: boolean;
@@ -12,15 +13,29 @@ interface GameReviewModalProps {
 
 export const GameReviewModal: React.FC<GameReviewModalProps> = ({ isOpen, onClose, history }) => {
   const [selectedPly, setSelectedPly] = useState<number>(history.length);
+  const [analysis, setAnalysis] = useState<FullGameAnalysis | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const analysis = useMemo(() => {
-    if (!isOpen || history.length === 0) return null;
-    return ChessEvaluator.analyzeFullGame(history);
+  useEffect(() => {
+    if (!isOpen || history.length === 0) {
+      setAnalysis(null);
+      return;
+    }
+    let active = true;
+    setIsAnalyzing(true);
+    engineClient.analyzeFullGame(history).then((res) => {
+      if (active) {
+        setAnalysis(res);
+        setSelectedPly(history.length);
+        setIsAnalyzing(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, [isOpen, history]);
 
-  if (!isOpen || !analysis) return null;
-
-  const { evaluatedMoves, whiteAccuracy, blackAccuracy, whiteStats, blackStats } = analysis;
+  if (!isOpen) return null;
 
   const getBadgeStyle = (grade: MoveGrade) => {
     switch (grade) {
@@ -47,10 +62,8 @@ export const GameReviewModal: React.FC<GameReviewModalProps> = ({ isOpen, onClos
     }
   };
 
-  const currentMove = evaluatedMoves.find((m) => m.ply === selectedPly) || evaluatedMoves[evaluatedMoves.length - 1];
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in" role="dialog" aria-modal="true">
       <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-950/70">
@@ -60,12 +73,13 @@ export const GameReviewModal: React.FC<GameReviewModalProps> = ({ isOpen, onClos
             </div>
             <div>
               <h2 className="text-xl font-black text-white">Full Game Review & Analysis</h2>
-              <p className="text-xs text-slate-400">Comprehensive move accuracy and classification</p>
+              <p className="text-xs text-slate-400">Worker-accelerated move grading and accuracy metrics</p>
             </div>
           </div>
 
           <button
             onClick={onClose}
+            aria-label="Close game review"
             className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -74,138 +88,132 @@ export const GameReviewModal: React.FC<GameReviewModalProps> = ({ isOpen, onClos
 
         {/* Content Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1">
-          {/* Accuracy Score Cards */}
-          <div className="grid grid-cols-2 gap-4">
-            {/* White Player */}
-            <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                White Accuracy
-              </span>
-              <span className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono">
-                {whiteAccuracy}%
-              </span>
-              <span className="text-xs text-slate-300 mt-1">
-                {whiteAccuracy >= 90 ? "Grandmaster level!" : whiteAccuracy >= 80 ? "Masterly played" : "Solid game"}
-              </span>
-            </div>
-
-            {/* Black Player */}
-            <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                Black Accuracy
-              </span>
-              <span className="text-3xl sm:text-4xl font-black text-indigo-400 font-mono">
-                {blackAccuracy}%
-              </span>
-              <span className="text-xs text-slate-300 mt-1">
-                {blackAccuracy >= 90 ? "Grandmaster level!" : blackAccuracy >= 80 ? "Masterly played" : "Solid game"}
-              </span>
-            </div>
-          </div>
-
-          {/* Move Grade Breakdown Table */}
-          <div className="bg-slate-800/50 border border-slate-700/80 rounded-xl p-4">
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
-              Move Classification Summary
-            </h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div className="flex items-center justify-between p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300">
-                <span>💎 Brilliant</span>
-                <span className="font-mono font-bold">{whiteStats.brilliant + blackStats.brilliant}</span>
-              </div>
-              <div className="flex items-center justify-between p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
-                <span>🟢 Best Moves</span>
-                <span className="font-mono font-bold">{whiteStats.best + blackStats.best}</span>
-              </div>
-              <div className="flex items-center justify-between p-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-300">
-                <span>🟡 Inaccuracies</span>
-                <span className="font-mono font-bold">{whiteStats.inaccuracy + blackStats.inaccuracy}</span>
-              </div>
-              <div className="flex items-center justify-between p-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300">
-                <span>🔴 Blunders</span>
-                <span className="font-mono font-bold">{whiteStats.blunder + blackStats.blunder}</span>
+          {isAnalyzing ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+              <Loader2 className="w-10 h-10 text-blue-400 animate-spin" />
+              <div>
+                <h3 className="text-base font-bold text-white">Analyzing Game Moves</h3>
+                <p className="text-xs text-slate-400 max-w-md mt-1">
+                  Calibrating move accuracy, detecting tactical mistakes, and computing positional advantage...
+                </p>
               </div>
             </div>
-          </div>
-
-          {/* Interactive Move Step Inspector */}
-          {currentMove && (
-            <div className="bg-slate-850 border border-slate-700 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  Move Inspector (Ply {currentMove.ply})
-                </span>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase border ${getBadgeStyle(currentMove.grade)}`}>
-                  {currentMove.grade.replace("_", " ")}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between bg-slate-900 border border-slate-800 rounded-lg p-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono font-bold text-base text-white">
-                    {Math.ceil(currentMove.ply / 2)}. {currentMove.turn === "w" ? "" : "... "}
-                    {currentMove.san}
+          ) : !analysis ? (
+            <div className="text-center py-12 text-slate-400 text-sm">
+              No moves to review. Play a game first!
+            </div>
+          ) : (
+            <>
+              {/* Accuracy Score Cards */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* White Player */}
+                <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    White Accuracy
                   </span>
-                  <span className="text-xs text-slate-400">
-                    (Eval: {(currentMove.evalAfter / 100).toFixed(1)})
+                  <span className="text-3xl sm:text-4xl font-black text-emerald-400 font-mono">
+                    {analysis.whiteAccuracy}%
+                  </span>
+                  <span className="text-xs text-slate-300 mt-1">
+                    {analysis.whiteAccuracy >= 90 ? "Grandmaster precision" : analysis.whiteAccuracy >= 80 ? "Solid masterly play" : "Sharp tactical contest"}
                   </span>
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setSelectedPly((p) => Math.max(1, p - 1))}
-                    disabled={selectedPly <= 1}
-                    className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 rounded-md text-white transition-colors"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setSelectedPly((p) => Math.min(evaluatedMoves.length, p + 1))}
-                    disabled={selectedPly >= evaluatedMoves.length}
-                    className="p-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 rounded-md text-white transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
+                {/* Black Player */}
+                <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-4 flex flex-col items-center text-center">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Black Accuracy
+                  </span>
+                  <span className="text-3xl sm:text-4xl font-black text-indigo-400 font-mono">
+                    {analysis.blackAccuracy}%
+                  </span>
+                  <span className="text-xs text-slate-300 mt-1">
+                    {analysis.blackAccuracy >= 90 ? "Grandmaster precision" : analysis.blackAccuracy >= 80 ? "Solid masterly play" : "Sharp tactical contest"}
+                  </span>
                 </div>
               </div>
-            </div>
+
+              {/* Move Breakdown Badges */}
+              <div className="grid grid-cols-2 gap-4 bg-slate-950/40 p-4 rounded-xl border border-slate-800">
+                {/* White Stats */}
+                <div className="space-y-1.5 text-xs">
+                  <span className="font-bold text-slate-300 block mb-2">White Classifications</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(analysis.whiteStats).map(([grade, count]) => {
+                      if (count === 0) return null;
+                      return (
+                        <span key={grade} className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold capitalize ${getBadgeStyle(grade as MoveGrade)}`}>
+                          {count} {grade.replace("_", " ")}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Black Stats */}
+                <div className="space-y-1.5 text-xs">
+                  <span className="font-bold text-slate-300 block mb-2">Black Classifications</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(analysis.blackStats).map(([grade, count]) => {
+                      if (count === 0) return null;
+                      return (
+                        <span key={grade} className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold capitalize ${getBadgeStyle(grade as MoveGrade)}`}>
+                          {count} {grade.replace("_", " ")}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Move List by Turn */}
+              <div className="border border-slate-800 rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 bg-slate-800/80 border-b border-slate-800 flex items-center justify-between">
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">Move-by-Move Log</span>
+                  <span className="text-[11px] text-slate-400">Total plies: {analysis.evaluatedMoves.length}</span>
+                </div>
+                <div className="max-h-60 overflow-y-auto divide-y divide-slate-800/60 font-mono text-xs">
+                  {analysis.evaluatedMoves.map((m) => {
+                    const isSelected = m.ply === selectedPly;
+                    return (
+                      <button
+                        key={m.ply}
+                        onClick={() => setSelectedPly(m.ply)}
+                        className={`w-full flex items-center justify-between px-4 py-2 text-left transition-colors ${
+                          isSelected ? "bg-blue-600/25 border-l-4 border-blue-500" : "hover:bg-slate-800/40"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-500 w-8">
+                            {Math.ceil(m.ply / 2)}.
+                          </span>
+                          <span className="font-bold text-white w-14">{m.san}</span>
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-sans font-bold capitalize border ${getBadgeStyle(m.grade)}`}>
+                            {m.grade.replace("_", " ")}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          Eval: {m.evalAfter >= 0 ? `+${(m.evalAfter / 100).toFixed(2)}` : (m.evalAfter / 100).toFixed(2)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
           )}
-
-          {/* Move Grid Clickable Chips */}
-          <div>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block mb-2">
-              All Moves in Match
-            </span>
-            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-950 rounded-xl border border-slate-800">
-              {evaluatedMoves.map((m) => (
-                <button
-                  key={m.ply}
-                  onClick={() => setSelectedPly(m.ply)}
-                  className={`px-2 py-1 rounded text-xs font-mono font-semibold transition-all border ${
-                    selectedPly === m.ply
-                      ? "ring-2 ring-blue-500 scale-105"
-                      : "opacity-80 hover:opacity-100"
-                  } ${getBadgeStyle(m.grade)}`}
-                >
-                  {m.turn === "w" ? `${Math.ceil(m.ply / 2)}. ` : ""}
-                  {m.san}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/70 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs sm:text-sm font-bold transition-all shadow-lg"
+            className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all shadow-md"
           >
-            Done Reviewing
+            Done
           </button>
         </div>
       </div>
     </div>
   );
 };
-

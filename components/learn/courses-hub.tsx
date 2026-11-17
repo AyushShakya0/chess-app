@@ -40,17 +40,17 @@ export const CoursesHub: React.FC = () => {
   const [feedback, setFeedback] = useState<string>(activeLesson.instruction);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
   const [showHint, setShowHint] = useState(true);
-  const [completedLessonIds, setCompletedLessonIds] = useState<string[]>([]);
+  const [completedLessonIds, setCompletedLessonIds] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("prin_chess_completed_lessons");
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
+  });
   const [theme] = useState<BoardTheme>("classic");
   const [copiedFen, setCopiedFen] = useState(false);
-
-  // Load completed lessons from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem("prin_chess_completed_lessons");
-      if (saved) setCompletedLessonIds(JSON.parse(saved));
-    } catch {}
-  }, []);
 
   // Filter courses by category
   const filteredCourses = useMemo(() => {

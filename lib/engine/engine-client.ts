@@ -1,5 +1,5 @@
 import { Chess, Move } from "chess.js";
-import { ChessEvaluator } from "./evaluator";
+import { ChessEvaluator, type FullGameAnalysis } from "./evaluator";
 
 export interface EvalResult {
   score: number;
@@ -116,6 +116,34 @@ class EngineClient {
     }
 
     return this.getSyncEvaluation(game, depth);
+  }
+
+  public async analyzeFullGame(history: string[]): Promise<FullGameAnalysis> {
+    const worker = this.initWorker();
+
+    if (worker) {
+      const id = String(this.nextId++);
+
+      return new Promise<FullGameAnalysis>((resolve) => {
+        const timeout = setTimeout(() => {
+          this.pendingCallbacks.delete(id);
+          resolve(ChessEvaluator.analyzeFullGame(history));
+        }, 10000);
+
+        this.pendingCallbacks.set(id, (data) => {
+          clearTimeout(timeout);
+          if (data && data.analysis) {
+            resolve(data.analysis as FullGameAnalysis);
+          } else {
+            resolve(ChessEvaluator.analyzeFullGame(history));
+          }
+        });
+
+        worker.postMessage({ id, type: "analyzeFullGame", history });
+      });
+    }
+
+    return ChessEvaluator.analyzeFullGame(history);
   }
 
   private getSyncEvaluation(game: Chess, depth = 2): EvalResult {
