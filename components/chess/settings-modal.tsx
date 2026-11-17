@@ -12,6 +12,8 @@ interface SettingsModalProps {
   onThemeChange: (theme: BoardTheme) => void;
   evalMode: EvalBarMode;
   onEvalModeChange: (mode: EvalBarMode) => void;
+  autoPromoteToQueen?: boolean;
+  onAutoPromoteChange?: (val: boolean) => void;
   activeBotName?: string;
   activeBotDepth?: number;
 }
@@ -75,6 +77,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onThemeChange,
   evalMode,
   onEvalModeChange,
+  autoPromoteToQueen = true,
+  onAutoPromoteChange,
   activeBotName,
   activeBotDepth,
 }) => {
@@ -195,7 +199,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* Section 3: Engine Calculation Details */}
+          {/* Section 3: Pawn Promotion Behavior */}
+          {onAutoPromoteChange && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Pawn Promotion</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onAutoPromoteChange(!autoPromoteToQueen)}
+                className={`w-full flex items-center justify-between p-3 rounded-2xl border text-left transition-all ${
+                  autoPromoteToQueen
+                    ? "bg-slate-800/90 border-blue-500/60 shadow-lg"
+                    : "bg-slate-800/40 border-slate-700/60 hover:border-slate-600"
+                }`}
+              >
+                <div>
+                  <span className="text-xs font-bold text-white block">
+                    {autoPromoteToQueen ? "Auto-Queen (Default)" : "Manual Choice (Under-promotion allowed)"}
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {autoPromoteToQueen
+                      ? "Automatically promotes pawns reaching the 8th rank to a Queen"
+                      : "Shows piece picker (Queen, Rook, Bishop, Knight) on promotion"}
+                  </span>
+                </div>
+                <div
+                  className={`w-5 h-5 rounded-full border flex items-center justify-center transition-colors shrink-0 ml-3 ${
+                    autoPromoteToQueen
+                      ? "border-blue-500 bg-blue-500 text-white"
+                      : "border-slate-600 bg-slate-900"
+                  }`}
+                >
+                  {autoPromoteToQueen && <Check className="w-3 h-3 stroke-[3]" />}
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Section 4: Engine Calculation Details */}
           {activeBotName && (
             <div className="p-3.5 bg-slate-800/40 border border-slate-700/60 rounded-2xl flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">

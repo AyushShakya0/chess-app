@@ -4,6 +4,7 @@ import React, { useState, useEffect, use } from "react";
 import { Chess, Square } from "chess.js";
 import { Chessboard, BoardTheme } from "@/components/chess/board";
 import { sound } from "@/lib/audio/sound";
+import { useChessClock } from "@/lib/chess/use-chess-clock";
 import { Trophy, Copy, Check, Users, MessageSquare, Flag, Handshake, ArrowLeft } from "lucide-react";
 import confetti from "canvas-confetti";
 import Link from "next/link";
@@ -23,8 +24,6 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
   const [gameOver, setGameOver] = useState<string | null>(null);
 
   // Clocks
-  const [whiteTime, setWhiteTime] = useState(300); // 5 min
-  const [blackTime, setBlackTime] = useState(300);
   const [isClockRunning, setIsClockRunning] = useState(false);
 
   // Chat
@@ -33,41 +32,21 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
   ]);
   const [inputMsg, setInputMsg] = useState("");
 
-  // Clock countdown
-  useEffect(() => {
-    if (!isClockRunning || gameOver) return;
-    const interval = setInterval(() => {
-      if (game.turn() === "w") {
-        setWhiteTime((t) => {
-          if (t <= 1) {
-            handleTimeout("w");
-            return 0;
-          }
-          if (t === 10) sound.playLowTimeTick();
-          return t - 1;
-        });
-      } else {
-        setBlackTime((t) => {
-          if (t <= 1) {
-            handleTimeout("b");
-            return 0;
-          }
-          if (t === 10) sound.playLowTimeTick();
-          return t - 1;
-        });
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [isClockRunning, game.turn(), gameOver]);
-
-  const handleTimeout = (loser: "w" | "b") => {
-    const winner = loser === "w" ? "Black" : "White";
-    setGameOver(`${winner} wins on time! ⏰`);
-    sound.playVictory();
-  };
+  const clock = useChessClock({
+    initialTimeSeconds: 300,
+    incrementSeconds: 0,
+    activeColor: game.turn(),
+    isRunning: isClockRunning && !gameOver,
+    onTimeout: (loser: "w" | "b") => {
+      const winner = loser === "w" ? "Black" : "White";
+      setGameOver(`${winner} wins on time! ⏰`);
+      sound.playVictory();
+    },
+  });
 
   const handleMove = (m: { from: Square; to: Square; promotion?: string }) => {
     if (!isClockRunning) setIsClockRunning(true);
+    clock.switchTurn();
     setLastMove({ from: m.from, to: m.to });
 
     if (game.isCheckmate()) {
@@ -93,12 +72,6 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
     if (!inputMsg.trim()) return;
     setMessages((prev) => [...prev, { sender: playerColor === "white" ? "White" : "Black", text: inputMsg }]);
     setInputMsg("");
-  };
-
-  const formatClock = (s: number) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${m}:${sec < 10 ? "0" : ""}${sec}`;
   };
 
   return (
@@ -147,7 +120,7 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
                   : "bg-slate-900 border-slate-800 text-slate-300"
               }`}
             >
-              {formatClock(blackTime)}
+              {clock.blackDisplay}
             </div>
           </div>
 
@@ -173,7 +146,7 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
                   : "bg-slate-900 border-slate-800 text-slate-300"
               }`}
             >
-              {formatClock(whiteTime)}
+              {clock.whiteDisplay}
             </div>
           </div>
 

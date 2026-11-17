@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Chess, Square, Move } from "chess.js";
 import { Chessboard, BoardTheme } from "./board";
 import { sound } from "@/lib/audio/sound";
 import { ChessEvaluator } from "@/lib/engine/evaluator";
+import { engineClient } from "@/lib/engine/engine-client";
 import { Bot, MessageSquare, RefreshCw, Trophy, Flag, Zap, Sparkles, Settings } from "lucide-react";
 import confetti from "canvas-confetti";
 import { EvaluationBar, EvalBarMode } from "./evaluation-bar";
@@ -124,9 +125,11 @@ export const BOT_CATALOG: BotPersona[] = [
 
 export const AiBotsPlay: React.FC = () => {
   const [selectedBot, setSelectedBot] = useState<BotPersona>(BOT_CATALOG[2]); // Gotham default
-  const [game, setGame] = useState<Chess>(new Chess());
+  const [game, setGame] = useState<Chess>(() => new Chess());
+  const [, setGameVersion] = useState(0);
   const [theme, setTheme] = useState<BoardTheme>("classic");
   const [evalMode, setEvalMode] = useState<EvalBarMode>("live");
+  const [autoPromoteToQueen, setAutoPromoteToQueen] = useState(true);
   const [evalScore, setEvalScore] = useState<number>(0);
   const [isMate, setIsMate] = useState(false);
   const [mateIn, setMateIn] = useState<number | null>(null);
@@ -137,6 +140,8 @@ export const AiBotsPlay: React.FC = () => {
   const [gameOver, setGameOver] = useState<string | null>(null);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
   const [switchedMidGame, setSwitchedMidGame] = useState<string | null>(null);
+
+  const botTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Restore stored preferences
   useEffect(() => {
@@ -149,9 +154,22 @@ export const AiBotsPlay: React.FC = () => {
       if (savedEval && ["live", "every-5", "disabled"].includes(savedEval)) {
         setEvalMode(savedEval);
       }
+      const savedAutoPromote = localStorage.getItem("prin_chess_auto_queen");
+      if (savedAutoPromote !== null) {
+        setAutoPromoteToQueen(savedAutoPromote === "true");
+      }
     } catch {
       // LocalStorage not available in private mode
     }
+  }, []);
+
+  // Clear pending timers on unmount
+  useEffect(() => {
+    return () => {
+      if (botTimeoutRef.current) {
+        clearTimeout(botTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Initial bot greeting
@@ -163,8 +181,8 @@ export const AiBotsPlay: React.FC = () => {
 
   const getRandomLine = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)];
 
-  // Update position evaluation
-  const updateEvaluation = (currentGame: Chess, forced = false) => {
+  // Update position evaluation off the main thread via Web Worker
+  const updateEvaluation = async (currentGame: Chess, forced = false) => {
     if (evalMode === "disabled" && !forced) return;
 
     const moveCount = currentGame.history().length;
@@ -172,25 +190,10 @@ export const AiBotsPlay: React.FC = () => {
       return;
     }
 
-    if (currentGame.isCheckmate()) {
-      setIsMate(true);
-      const isBlackMated = currentGame.turn() === "b";
-      setMateIn(isBlackMated ? 1 : -1);
-      setEvalScore(isBlackMated ? 10000 : -10000);
-      return;
-    }
-
-    if (currentGame.isDraw()) {
-      setIsMate(false);
-      setMateIn(null);
-      setEvalScore(0);
-      return;
-    }
-
-    setIsMate(false);
-    setMateIn(null);
-    const { score } = ChessEvaluator.getBestMoveAndEval(currentGame, 2);
-    setEvalScore(score);
+    const res = await engineClient.getEvaluation(currentGame, 2);
+    setIsMate(res.isMate);
+    setMateIn(res.mateIn);
+    setEvalScore(res.score);
   };
 
   // Switch bot cleanly without resetting the board mid-game
@@ -208,7 +211,8 @@ export const AiBotsPlay: React.FC = () => {
 
       // If it's Black's turn to move, trigger the new bot
       if (game.turn() === "b") {
-        setTimeout(() => triggerBotMove(game, newBot), 400);
+        if (botTimeoutRef.current) clearTimeout(botTimeoutRef.current);
+        botTimeoutRef.current = setTimeout(() => triggerBotMove(game, newBot), 400);
       }
     } else {
       const greeting = getRandomLine(newBot.dialogs.start);
@@ -219,7 +223,12 @@ export const AiBotsPlay: React.FC = () => {
   };
 
   const resetGame = () => {
+    if (botTimeoutRef.current) {
+      clearTimeout(botTimeoutRef.current);
+      botTimeoutRef.current = null;
+    }
     setGame(new Chess());
+    setGameVersion((v) => v + 1);
     setIsThinking(false);
     setGameOver(null);
     setLastMove(null);
@@ -238,11 +247,23 @@ export const AiBotsPlay: React.FC = () => {
 
     const activeBot = botOverride || selectedBot;
 
-    // Dynamic delay for humanized bot feel (400ms - 800ms)
-    await new Promise((r) => setTimeout(r, 550));
+    // Clear any previous bot timer
+    if (botTimeoutRef.current) {
+      clearTimeout(botTimeoutRef.current);
+    }
 
-    // Get move computed by ChessEvaluator calibrated for this bot's ELO and search depth
-    const chosenMove = ChessEvaluator.getBotMoveForElo(
+    // Dynamic delay for humanized bot feel (400ms - 800ms)
+    await new Promise((r) => {
+      botTimeoutRef.current = setTimeout(r, 550);
+    });
+
+    if (currentGame.isGameOver()) {
+      setIsThinking(false);
+      return;
+    }
+
+    // Get move computed off the main thread via Web Worker
+    const chosenMove = await engineClient.getBotMove(
       currentGame,
       activeBot.elo,
       activeBot.blunderRate,
@@ -265,12 +286,23 @@ export const AiBotsPlay: React.FC = () => {
         }
 
         setLastMove({ from: executed.from as Square, to: executed.to as Square });
-        const updatedGame = new Chess(currentGame.fen());
-        setGame(updatedGame);
-        updateEvaluation(updatedGame);
+        setGameVersion((v) => v + 1);
+        updateEvaluation(currentGame);
 
-        // Trigger bot dialogue
-        triggerBotReaction(executed, currentGame, activeBot);
+        if (currentGame.isCheckmate()) {
+          setGameOver(`Checkmate! ${activeBot.name} won the match!`);
+          sound.playDefeat();
+          const speech = getRandomLine(activeBot.dialogs.win);
+          setLastBotRemark(speech);
+          setChatLog((prev) => [...prev, { sender: "bot", text: speech }]);
+        } else if (currentGame.isThreefoldRepetition()) {
+          setGameOver("Draw by threefold repetition!");
+        } else if (currentGame.isDraw()) {
+          setGameOver("Draw reached against " + activeBot.name);
+        } else {
+          // Trigger bot dialogue
+          triggerBotReaction(executed, currentGame, activeBot);
+        }
       }
     } catch {
       // Ignore move error
@@ -323,8 +355,8 @@ export const AiBotsPlay: React.FC = () => {
   // Player makes move
   const handlePlayerMove = (m: { from: Square; to: Square; promotion?: string }) => {
     setLastMove({ from: m.from, to: m.to });
-    const current = new Chess(game.fen());
-    updateEvaluation(current);
+    setGameVersion((v) => v + 1);
+    updateEvaluation(game);
 
     if (game.isCheckmate()) {
       setGameOver(`Checkmate! You defeated ${selectedBot.name}! 🏆`);
@@ -333,6 +365,11 @@ export const AiBotsPlay: React.FC = () => {
       const speech = getRandomLine(selectedBot.dialogs.lose);
       setLastBotRemark(speech);
       setChatLog((prev) => [...prev, { sender: "bot", text: speech }]);
+      return;
+    }
+
+    if (game.isThreefoldRepetition()) {
+      setGameOver("Draw by threefold repetition!");
       return;
     }
 
@@ -423,6 +460,7 @@ export const AiBotsPlay: React.FC = () => {
               orientation="white"
               onMove={handlePlayerMove}
               interactive={game.turn() === "w" && !isThinking && !gameOver}
+              autoPromoteToQueen={autoPromoteToQueen}
               theme={theme}
               lastMove={lastMove}
               boardSizeClass="w-[min(88vw,calc(100vh-210px))] h-[min(88vw,calc(100vh-210px))] sm:w-[min(80vw,calc(100vh-210px))] sm:h-[min(80vw,calc(100vh-210px))] lg:w-[min(560px,calc(100vh-200px))] lg:h-[min(560px,calc(100vh-200px))] max-w-[560px] max-h-[560px] aspect-square"
@@ -569,6 +607,13 @@ export const AiBotsPlay: React.FC = () => {
         }}
         activeBotName={selectedBot.name}
         activeBotDepth={selectedBot.depth}
+        autoPromoteToQueen={autoPromoteToQueen}
+        onAutoPromoteChange={(val) => {
+          setAutoPromoteToQueen(val);
+          try {
+            localStorage.setItem("prin_chess_auto_queen", String(val));
+          } catch {}
+        }}
       />
     </div>
   );

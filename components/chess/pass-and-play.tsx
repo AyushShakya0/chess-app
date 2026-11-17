@@ -5,6 +5,12 @@ import { Chess, Square } from "chess.js";
 import { Chessboard, BoardTheme } from "./board";
 import { sound } from "@/lib/audio/sound";
 import {
+  isValidQueenMove,
+  executeQueenMove,
+  checkSecretQueenCaptured,
+} from "@/lib/variants/hidden-queen";
+import { useChessClock } from "@/lib/chess/use-chess-clock";
+import {
   RotateCw,
   SplitSquareVertical,
   Trophy,
@@ -47,83 +53,10 @@ const BLACK_STARTING_PAWNS: { square: Square; label: string }[] = [
   { square: "h7", label: "h7 (h-File Assassin)" },
 ];
 
-// Helper: verifies unobstructed queen line geometry
-function isValidQueenMove(game: Chess, from: Square, to: Square, playerColor: "w" | "b"): boolean {
-  if (from === to) return false;
-
-  const fromFile = from.charCodeAt(0) - 97; // 0..7
-  const fromRank = parseInt(from[1], 10) - 1; // 0..7
-  const toFile = to.charCodeAt(0) - 97;
-  const toRank = parseInt(to[1], 10) - 1;
-
-  const dx = toFile - fromFile;
-  const dy = toRank - fromRank;
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-
-  const isOrthogonal = (absDx === 0 && absDy > 0) || (absDx > 0 && absDy === 0);
-  const isDiagonal = absDx === absDy && absDx > 0;
-
-  if (!isOrthogonal && !isDiagonal) return false;
-
-  const stepX = dx === 0 ? 0 : dx > 0 ? 1 : -1;
-  const stepY = dy === 0 ? 0 : dy > 0 ? 1 : -1;
-
-  let currX = fromFile + stepX;
-  let currY = fromRank + stepY;
-
-  while (currX !== toFile || currY !== toRank) {
-    const sqName = `${String.fromCharCode(97 + currX)}${currY + 1}` as Square;
-    if (game.get(sqName)) {
-      return false; // Path blocked
-    }
-    currX += stepX;
-    currY += stepY;
-  }
-
-  const targetPiece = game.get(to);
-  if (targetPiece) {
-    if (targetPiece.color === playerColor) return false;
-    if (targetPiece.type === "k") return false; // Cannot capture king directly
-  }
-
-  return true;
-}
-
-// Helper: moves a disguised piece with queen movement and updates FEN turn
-function executeQueenMove(
-  game: Chess,
-  from: Square,
-  to: Square,
-  color: "w" | "b"
-): { captured?: { type: string; color: string } } {
-  const movingPiece = game.remove(from);
-  const targetPiece = game.get(to);
-  let captured: { type: string; color: string } | undefined = undefined;
-
-  if (targetPiece) {
-    captured = { type: targetPiece.type, color: targetPiece.color };
-    game.remove(to);
-  }
-
-  // Preserve pawn visual disguise
-  game.put(movingPiece || { type: "p", color }, to);
-
-  const fenParts = game.fen().split(" ");
-  fenParts[1] = color === "w" ? "b" : "w"; // flip turn
-  fenParts[3] = "-"; // clear en-passant
-  fenParts[4] = String(Number(fenParts[4]) + 1);
-  if (color === "b") {
-    fenParts[5] = String(Number(fenParts[5]) + 1);
-  }
-
-  game.load(fenParts.join(" "));
-  return { captured };
-}
-
 export const PassAndPlay: React.FC = () => {
   const [variant, setVariant] = useState<PassVariant>("standard");
-  const [game, setGame] = useState<Chess>(new Chess());
+  const [game, setGame] = useState<Chess>(() => new Chess());
+  const [, setGameVersion] = useState(0);
   const [viewMode, setViewMode] = useState<"dual" | "flip">("dual");
   const [theme, setTheme] = useState<BoardTheme>("classic");
   const [autoQueen] = useState(true);
@@ -142,8 +75,6 @@ export const PassAndPlay: React.FC = () => {
 
   // Time controls
   const [timeControl] = useState<number>(300); // 5 min default
-  const [whiteTime, setWhiteTime] = useState<number>(300);
-  const [blackTime, setBlackTime] = useState<number>(300);
   const [isClockRunning, setIsClockRunning] = useState<boolean>(false);
 
   // Score Tracker
@@ -157,42 +88,6 @@ export const PassAndPlay: React.FC = () => {
   const [moveHistory, setMoveHistory] = useState<string[]>([]);
   const [lastMove, setLastMove] = useState<{ from: Square; to: Square } | null>(null);
 
-  // Clock countdown timer
-  useEffect(() => {
-    if (!isClockRunning || gameOverMessage || secretSetupStep !== "ready") return;
-
-    const timer = setInterval(() => {
-      if (game.turn() === "w") {
-        setWhiteTime((prev) => {
-          if (prev <= 1) {
-            handleTimeOut("w");
-            return 0;
-          }
-          if (prev === 10) sound.playLowTimeTick();
-          return prev - 1;
-        });
-      } else {
-        setBlackTime((prev) => {
-          if (prev <= 1) {
-            handleTimeOut("b");
-            return 0;
-          }
-          if (prev === 10) sound.playLowTimeTick();
-          return prev - 1;
-        });
-      }
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isClockRunning, game.turn(), gameOverMessage, secretSetupStep]);
-
-  const handleTimeOut = (loserColor: "w" | "b") => {
-    const winner = loserColor === "w" ? "Black" : "White";
-    setGameOverMessage(`${winner} wins on time! ⏰`);
-    sound.playVictory();
-    updateScore(winner === "White" ? "w" : "b");
-  };
-
   const updateScore = (winner: "w" | "b" | "d") => {
     setScore((prev) => ({
       white: winner === "w" ? prev.white + 1 : prev.white,
@@ -200,6 +95,20 @@ export const PassAndPlay: React.FC = () => {
       draws: winner === "d" ? prev.draws + 1 : prev.draws,
     }));
   };
+
+  // High-precision Monotonic Chess Clock
+  const clock = useChessClock({
+    initialTimeSeconds: timeControl,
+    incrementSeconds: 0,
+    activeColor: game.turn(),
+    isRunning: isClockRunning && !gameOverMessage && secretSetupStep === "ready",
+    onTimeout: (loserColor) => {
+      const winner = loserColor === "w" ? "Black" : "White";
+      setGameOverMessage(`${winner} wins on time! ⏰`);
+      sound.playVictory();
+      updateScore(winner === "White" ? "w" : "b");
+    },
+  });
 
   // Custom Move Interceptor: Allows the Secret Queen pawn to move as a Queen
   // Fog of war: legal moves displayed on board remain pawn moves, but clicking/dragging to queen squares is accepted!
@@ -222,21 +131,26 @@ export const PassAndPlay: React.FC = () => {
         }
 
         // Update tracking
-        setWhiteSecretSquare(to);
         if (wasCaptured) {
           setBlackSecretSquare(null);
           setSecretAnnouncement("💥 White's Secret Queen captured Black's Secret Queen!");
           sound.playVictory();
           setTimeout(() => setSecretAnnouncement(null), 4000);
+        } else if (res.revealed) {
+          setWhiteSecretSquare(null);
+          setSecretAnnouncement(`👑 White's Secret Queen reached the 8th rank and promoted to a Queen!`);
+          setTimeout(() => setSecretAnnouncement(null), 3500);
         } else {
+          setWhiteSecretSquare(to);
           setSecretAnnouncement(`✨ White unleashed Secret Queen power from ${from} to ${to}!`);
           setTimeout(() => setSecretAnnouncement(null), 3000);
         }
 
         setLastMove({ from, to });
-        setGame(new Chess(game.fen()));
+        setGameVersion((v) => v + 1);
         setMoveHistory(game.history());
         setIsClockRunning(true);
+        clock.switchTurn();
 
         checkPostMoveState("w");
         return true;
@@ -253,21 +167,26 @@ export const PassAndPlay: React.FC = () => {
           setTimeout(() => sound.playCheck(), 100);
         }
 
-        setBlackSecretSquare(to);
         if (wasCaptured) {
           setWhiteSecretSquare(null);
           setSecretAnnouncement("💥 Black's Secret Queen captured White's Secret Queen!");
           sound.playVictory();
           setTimeout(() => setSecretAnnouncement(null), 4000);
+        } else if (res.revealed) {
+          setBlackSecretSquare(null);
+          setSecretAnnouncement(`👑 Black's Secret Queen reached the 1st rank and promoted to a Queen!`);
+          setTimeout(() => setSecretAnnouncement(null), 3500);
         } else {
+          setBlackSecretSquare(to);
           setSecretAnnouncement(`✨ Black unleashed Secret Queen power from ${from} to ${to}!`);
           setTimeout(() => setSecretAnnouncement(null), 3000);
         }
 
         setLastMove({ from, to });
-        setGame(new Chess(game.fen()));
+        setGameVersion((v) => v + 1);
         setMoveHistory(game.history());
         setIsClockRunning(true);
+        clock.switchTurn();
 
         checkPostMoveState("b");
         return true;
@@ -282,21 +201,46 @@ export const PassAndPlay: React.FC = () => {
     if (!isClockRunning) {
       setIsClockRunning(true);
     }
+    clock.switchTurn();
 
     // Keep secret queen tracking synchronized if piece moves via standard pawn moves
     if (variant === "hidden-queen") {
       if (move.from === whiteSecretSquare) {
-        setWhiteSecretSquare(move.to);
+        if (move.to[1] === "8") {
+          setWhiteSecretSquare(null);
+          setSecretAnnouncement("👑 White's Secret Queen promoted on the 8th rank!");
+          setTimeout(() => setSecretAnnouncement(null), 3500);
+        } else {
+          setWhiteSecretSquare(move.to);
+        }
       } else if (move.from === blackSecretSquare) {
-        setBlackSecretSquare(move.to);
+        if (move.to[1] === "1") {
+          setBlackSecretSquare(null);
+          setSecretAnnouncement("👑 Black's Secret Queen promoted on the 1st rank!");
+          setTimeout(() => setSecretAnnouncement(null), 3500);
+        } else {
+          setBlackSecretSquare(move.to);
+        }
       }
 
-      // Check if secret queen was captured by standard move
-      if (move.to === whiteSecretSquare) {
+      // Check if secret queen was captured by standard move (including en-passant)
+      const lastMoveObj = game.history({ verbose: true }).slice(-1)[0];
+      const isWhiteCaptured = checkSecretQueenCaptured(
+        lastMoveObj || { from: move.from, to: move.to },
+        whiteSecretSquare,
+        "w"
+      );
+      const isBlackCaptured = checkSecretQueenCaptured(
+        lastMoveObj || { from: move.from, to: move.to },
+        blackSecretSquare,
+        "b"
+      );
+
+      if (isWhiteCaptured) {
         setWhiteSecretSquare(null);
         setSecretAnnouncement("💥 Black captured White's Secret Queen!");
         setTimeout(() => setSecretAnnouncement(null), 3500);
-      } else if (move.to === blackSecretSquare) {
+      } else if (isBlackCaptured) {
         setBlackSecretSquare(null);
         setSecretAnnouncement("💥 White captured Black's Secret Queen!");
         setTimeout(() => setSecretAnnouncement(null), 3500);
@@ -304,6 +248,7 @@ export const PassAndPlay: React.FC = () => {
     }
 
     setLastMove({ from: move.from, to: move.to });
+    setGameVersion((v) => v + 1);
     setMoveHistory(game.history());
 
     // 3-Check rule verification
@@ -362,8 +307,7 @@ export const PassAndPlay: React.FC = () => {
       fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/R1BQKBNR w KQkq - 0 1";
     }
     setGame(new Chess(fen));
-    setWhiteTime(timeControl);
-    setBlackTime(timeControl);
+    clock.resetClock(timeControl);
     setIsClockRunning(false);
     setGameOverMessage(null);
     setMoveHistory([]);
@@ -541,8 +485,8 @@ export const PassAndPlay: React.FC = () => {
           }`}
         >
           <span>⚪ White:</span>
-          <span className={whiteTime < 30 ? "text-red-400 animate-pulse" : ""}>
-            {formatTime(whiteTime)}
+          <span className={clock.isLowTimeWhite ? "text-red-400 animate-pulse" : ""}>
+            {clock.whiteDisplay}
           </span>
         </div>
 
@@ -560,8 +504,8 @@ export const PassAndPlay: React.FC = () => {
           }`}
         >
           <span>⚫ Black:</span>
-          <span className={blackTime < 30 ? "text-red-400 animate-pulse" : ""}>
-            {formatTime(blackTime)}
+          <span className={clock.isLowTimeBlack ? "text-red-400 animate-pulse" : ""}>
+            {clock.blackDisplay}
           </span>
         </div>
       </div>

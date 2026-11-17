@@ -11,6 +11,7 @@ import { VariantsPlay } from "@/components/chess/variants-play";
 import { KnightsTour } from "@/components/chess/knights-tour";
 import { BossMode } from "@/components/chess/boss-mode";
 import { Board3D } from "@/components/chess/board-3d";
+import { ModeErrorBoundary } from "@/components/chess/mode-error-boundary";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<NavTab>("bots");
@@ -40,13 +41,41 @@ export default function Home() {
           </div>
         ) : (
           <>
-            {activeTab === "bots" && <AiBotsPlay />}
-            {activeTab === "pass" && <PassAndPlay />}
-            {activeTab === "puzzles" && <PuzzleArena />}
-            {activeTab === "openings" && <OpeningExplorer />}
-            {activeTab === "variants" && <VariantsPlay />}
-            {activeTab === "tour" && <KnightsTour />}
-            {activeTab === "boss" && <BossMode />}
+            {activeTab === "bots" && (
+              <ModeErrorBoundary modeName="AI Bots Arena">
+                <AiBotsPlay />
+              </ModeErrorBoundary>
+            )}
+            {activeTab === "pass" && (
+              <ModeErrorBoundary modeName="Pass & Play Mode">
+                <PassAndPlay />
+              </ModeErrorBoundary>
+            )}
+            {activeTab === "puzzles" && (
+              <ModeErrorBoundary modeName="Tactical Puzzles">
+                <PuzzleArena />
+              </ModeErrorBoundary>
+            )}
+            {activeTab === "openings" && (
+              <ModeErrorBoundary modeName="Opening Academy">
+                <OpeningExplorer />
+              </ModeErrorBoundary>
+            )}
+            {activeTab === "variants" && (
+              <ModeErrorBoundary modeName="Chess Variants">
+                <VariantsPlay />
+              </ModeErrorBoundary>
+            )}
+            {activeTab === "tour" && (
+              <ModeErrorBoundary modeName="Knight's Tour">
+                <KnightsTour />
+              </ModeErrorBoundary>
+            )}
+            {activeTab === "boss" && (
+              <ModeErrorBoundary modeName="Boss Arena">
+                <BossMode />
+              </ModeErrorBoundary>
+            )}
           </>
         )}
       </main>

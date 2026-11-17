@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limiter";
 
 // Module-level tracking for key cool-offs (e.g. 429 quota exhausted)
 const keyCoolOffs = new Map<string, number>();
 
-// In-memory request debounce to prevent excessive spamming (2s)
-let lastCallTimestamp = 0;
-const GLOBAL_COOLDOWN_MS = 2000;
+// Allowed bot personas to prevent prompt injection hijacking
+const ALLOWED_BOT_NAMES = new Set([
+  "Martin",
+  "Nelson",
+  "GothamChess",
+  "Hikaru Nakamura",
+  "Magnus Carlsen",
+  "Ayush Shakya",
+  "Ayush (GM Boss)",
+  "Bot",
+]);
 
 // Known working models in order of speed and availability
 const PREFERRED_MODELS = [
@@ -41,15 +50,30 @@ function getApiKeys(): string[] {
 
 export async function POST(req: NextRequest) {
   try {
-    const { botName, event, pgn, lastMove } = await req.json();
-
-    const now = Date.now();
-    if (now - lastCallTimestamp < GLOBAL_COOLDOWN_MS) {
+    const ip = getClientIp(req);
+    const rateLimit = checkRateLimit(ip, 25, 60 * 1000); // 25 chat calls / min
+    if (!rateLimit.success) {
       return NextResponse.json({
         fallback: true,
         reason: "rate_limited",
       });
     }
+
+    const body = await req.json();
+
+    // 1. Validate & sanitize botName against allowlist
+    const rawBotName = typeof body.botName === "string" ? body.botName.trim() : "";
+    const botName = ALLOWED_BOT_NAMES.has(rawBotName) ? rawBotName : "GothamChess";
+
+    // 2. Sanitize & cap field lengths
+    const rawEvent = typeof body.event === "string" ? body.event.trim().slice(0, 60) : "normal move";
+    const rawLastMove = typeof body.lastMove === "string" ? body.lastMove.trim().slice(0, 15) : "e4";
+    const rawPgn = typeof body.pgn === "string" ? body.pgn.trim().slice(0, 120) : "";
+
+    // Restrict lastMove to legal SAN characters only
+    const cleanLastMove = /^[a-h1-8KQRBNx+#=O\-\/ ]+$/i.test(rawLastMove) ? rawLastMove : "e4";
+    // Restrict pgn to legal SAN characters and move numbers
+    const cleanPgn = /^[0-9a-hKQRBNx+#=O\-\. ]+$/i.test(rawPgn) ? rawPgn : "";
 
     const allKeys = getApiKeys();
     if (allKeys.length === 0) {
@@ -59,7 +83,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Sort keys: keys whose cooldown has expired or are not cooled down come first
+    const now = Date.now();
+    // Sort keys: keys whose cooldown has expired come first
     const availableKeys = [...allKeys].sort((a, b) => {
       const coolA = keyCoolOffs.get(a) || 0;
       const coolB = keyCoolOffs.get(b) || 0;
@@ -68,21 +93,19 @@ export async function POST(req: NextRequest) {
       return aAvailable - bAvailable;
     });
 
-    const systemPrompt = `You are an AI chess bot named "${botName || "GothamChess"}" playing an online chess match against a human.
-Current game event: ${event || "normal move"}.
-Last move played: ${lastMove || "e4"}.
-Recent moves: ${pgn || "1. e4"}.
+    const systemPrompt = `You are an AI chess bot named "${botName}" playing an online chess match against a human.
+Current game event: ${rawEvent}.
+Last move played: ${cleanLastMove}.
+Recent moves: ${cleanPgn || cleanLastMove}.
 
 Respond with ONE short, witty, in-character sentence (under 18 words) reacting to this position. Trash-talk or banter in character. Do NOT break character.`;
 
     let generatedText: string | null = null;
-    let keyUsedIndex = -1;
 
     for (let i = 0; i < availableKeys.length; i++) {
       const currentKey = availableKeys[i];
       const coolOffExpiry = keyCoolOffs.get(currentKey) || 0;
 
-      // If key is still cooling off and we have other fresh keys, skip it
       if (coolOffExpiry > now && i < availableKeys.length - 1) {
         continue;
       }
@@ -98,12 +121,19 @@ Respond with ONE short, witty, in-character sentence (under 18 words) reacting t
             },
           });
 
-          const result = await model.generateContent(systemPrompt);
+          // Timeout with 4-second race
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout")), 4000)
+          );
+
+          const result = await Promise.race([
+            model.generateContent(systemPrompt),
+            timeoutPromise,
+          ]);
+
           const raw = result.response.text();
           if (raw) {
             generatedText = raw.trim().replace(/^["']|["']$/g, "");
-            keyUsedIndex = i;
-            // Clear any previous cool-off on success
             keyCoolOffs.delete(currentKey);
             break;
           }
@@ -116,15 +146,11 @@ Respond with ONE short, witty, in-character sentence (under 18 words) reacting t
             errMsg.includes("rate");
 
           if (isQuota) {
-            // Set 60-second cool-off for this exhausted key
             keyCoolOffs.set(currentKey, now + 60_000);
-            console.warn(`[Gemini Failover] Key #${i + 1} quota hit, cooling down 60s. Trying next backup key...`);
-            break; // Break inner model loop to switch key immediately
+            break;
           } else if (errMsg.includes("404") || errMsg.includes("not found")) {
-            // Model not found on this version, continue to next model in PREFERRED_MODELS
             continue;
           } else {
-            console.warn(`[Gemini Failover] Key #${i + 1} (${modelName}) error: ${errMsg}`);
             break;
           }
         }
@@ -136,15 +162,12 @@ Respond with ONE short, witty, in-character sentence (under 18 words) reacting t
     }
 
     if (generatedText) {
-      lastCallTimestamp = Date.now();
       return NextResponse.json({
         text: generatedText,
         fallback: false,
-        keyIndex: keyUsedIndex,
       });
     }
 
-    // All keys exhausted or errored: signal client to use rich character fallback
     return NextResponse.json({
       fallback: true,
       reason: "all_keys_exhausted",

@@ -1,75 +1,12 @@
 import test from "node:test";
 import assert from "node:assert";
-import { Chess, type Square } from "chess.js";
-
-function isValidQueenMove(game: Chess, from: Square, to: Square, playerColor: "w" | "b"): boolean {
-  if (from === to) return false;
-
-  const fromFile = from.charCodeAt(0) - 97;
-  const fromRank = parseInt(from[1], 10) - 1;
-  const toFile = to.charCodeAt(0) - 97;
-  const toRank = parseInt(to[1], 10) - 1;
-
-  const dx = toFile - fromFile;
-  const dy = toRank - fromRank;
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-
-  const isOrthogonal = (absDx === 0 && absDy > 0) || (absDx > 0 && absDy === 0);
-  const isDiagonal = absDx === absDy && absDx > 0;
-
-  if (!isOrthogonal && !isDiagonal) return false;
-
-  const stepX = dx === 0 ? 0 : dx > 0 ? 1 : -1;
-  const stepY = dy === 0 ? 0 : dy > 0 ? 1 : -1;
-
-  let currX = fromFile + stepX;
-  let currY = fromRank + stepY;
-
-  while (currX !== toFile || currY !== toRank) {
-    const sqName = `${String.fromCharCode(97 + currX)}${currY + 1}` as Square;
-    if (game.get(sqName)) return false;
-    currX += stepX;
-    currY += stepY;
-  }
-
-  const targetPiece = game.get(to);
-  if (targetPiece) {
-    if (targetPiece.color === playerColor) return false;
-    if (targetPiece.type === "k") return false;
-  }
-
-  return true;
-}
-
-function executeQueenMove(
-  game: Chess,
-  from: Square,
-  to: Square,
-  color: "w" | "b"
-): { captured?: { type: string; color: string } } {
-  const movingPiece = game.remove(from);
-  const targetPiece = game.get(to);
-  let captured: { type: string; color: string } | undefined = undefined;
-
-  if (targetPiece) {
-    captured = { type: targetPiece.type, color: targetPiece.color };
-    game.remove(to);
-  }
-
-  game.put(movingPiece || { type: "p", color }, to);
-
-  const fenParts = game.fen().split(" ");
-  fenParts[1] = color === "w" ? "b" : "w";
-  fenParts[3] = "-";
-  fenParts[4] = String(Number(fenParts[4]) + 1);
-  if (color === "b") {
-    fenParts[5] = String(Number(fenParts[5]) + 1);
-  }
-
-  game.load(fenParts.join(" "));
-  return { captured };
-}
+import { Chess } from "chess.js";
+import {
+  isValidQueenMove,
+  executeQueenMove,
+  checkSecretQueenCaptured,
+  wouldLeaveKingInCheck,
+} from "../lib/variants/hidden-queen.ts";
 
 test("Secret Queen - Queen sliding moves for disguised pawn", () => {
   const game = new Chess();
@@ -109,3 +46,61 @@ test("Secret Queen - Capturing enemy piece as a Queen", () => {
   assert.strictEqual(game.get("d7")?.color, "w");
 });
 
+test("Secret Queen - Back-rank promotion prevents FEN corruption", () => {
+  // Clear file d so d2 can slide directly to d8 (empty board except kings and pawns)
+  const game = new Chess("3k4/8/8/8/8/8/3P4/3K4 w - - 0 1");
+
+  // Move secret pawn d2 to d8
+  assert.strictEqual(isValidQueenMove(game, "d2", "d8", "w"), false); // d8 is king
+  assert.strictEqual(isValidQueenMove(game, "d2", "a5", "w"), true);
+
+  // Set position where e8 is empty and d7 pawn reaches e8
+  const game2 = new Chess("4k3/3P4/8/8/8/8/8/4K3 w - - 0 1");
+  // Queen move from d7 to b7 or d8... wait d8 is attacked? Let's check a8
+  const game3 = new Chess("7k/P7/8/8/8/8/8/7K w - - 0 1");
+  // a7 slides to a8
+  assert.strictEqual(isValidQueenMove(game3, "a7", "a8", "w"), true);
+
+  // Execute queen move to back rank (a8)
+  const result = executeQueenMove(game3, "a7", "a8", "w");
+  assert.strictEqual(result.revealed, true, "Must be revealed on back rank");
+  assert.strictEqual(game3.get("a8")?.type, "q", "Must be promoted to Queen on 8th rank to avoid FEN corruption");
+  assert.doesNotThrow(() => game3.fen(), "FEN must remain completely valid");
+});
+
+test("Secret Queen - Rejects moves that leave own king in check (self-check)", () => {
+  // White king on e1, black king on a8, black rook on e8, secret pawn on e2 pinning itself to the king
+  const pinnedGame = new Chess("k3r3/8/8/8/8/8/4P3/4K3 w - - 0 1");
+
+  // e2 moving sideways to a2 would expose e1 king to e8 rook check!
+  assert.strictEqual(wouldLeaveKingInCheck(pinnedGame, "e2", "a2", "w"), true);
+  assert.strictEqual(isValidQueenMove(pinnedGame, "e2", "a2", "w"), false, "Moving pinned secret pawn sideways must be illegal");
+
+  // Moving along the pin (e2 to e4) shields the king, so it is legal!
+  assert.strictEqual(wouldLeaveKingInCheck(pinnedGame, "e2", "e4", "w"), false);
+  assert.strictEqual(isValidQueenMove(pinnedGame, "e2", "e4", "w"), true, "Moving along the pin line must be legal");
+});
+
+test("Secret Queen - Detects en-passant capture of secret pawn", () => {
+  const game = new Chess();
+  // 1. e4 a6 2. e5 d5
+  game.move("e4");
+  game.move("a6");
+  game.move("e5");
+  game.move("d5");
+
+  // Black's secret pawn is at d5
+  const blackSecret = "d5";
+
+  // White plays en-passant capture: exd6
+  const epMove = game.move("exd6");
+  assert.ok(epMove, "exd6 en-passant should execute");
+  assert.strictEqual(epMove.flags.includes("e"), true, "Move flags must include 'e' for en-passant");
+
+  const captured = checkSecretQueenCaptured(
+    { from: epMove.from, to: epMove.to, flags: epMove.flags },
+    blackSecret,
+    "b"
+  );
+  assert.strictEqual(captured, true, "En-passant capture on d6 must detect that secret pawn on d5 was captured");
+});

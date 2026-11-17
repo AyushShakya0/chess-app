@@ -6,6 +6,179 @@
 
 ---
 
+## 0. Project Audit & Current Status (updated 2026-11-16)
+
+> Audit of `develop` @ `2167dbb`. Verified: `npx tsc --noEmit` clean, `npm test` 15/15 pass, `npm run build` succeeds (home route first-load JS **324 kB**). Codebase ≈ 10k lines TS/TSX + 1 Go file.
+>
+> Sections 1–7 below describe the **target** product. This section records what actually exists, what is broken, and the order in which to fix it. Work the backlog in §0.9 before starting new features from §2.
+
+### 0.1 Plan vs. Reality
+
+| Area | What exists today | Status |
+|---|---|---|
+| 2D board & gestures | Click/drag moves, right-click arrows & highlights, single premove. No multi-premove queue, no touch drag, under-promotion broken (§0.2 #2) | 🟡 Partial |
+| Themes | 4 board themes, 1 piece set, dark UI only | 🟡 Partial |
+| 3D board | Renders a fixed starting position; not connected to any game | 🟠 Demo only |
+| Engine | Custom minimax in `lib/engine/evaluator.ts`, **on the main thread**. No Stockfish, no Web Worker, no WASM | 🟠 Substitute |
+| AI bots + Gemini | 5 personas, `/api/ai/chat` with multi-key failover + canned fallback lines | 🟢 Done (bugs) |
+| Game review | `game-review-modal.tsx` exists but is **never rendered**; grades come from 1-ply static eval | 🔴 Unreachable |
+| Pass & Play | Dual board, flip, Hidden Queen, 3-Check, odds | 🟢 Done (bugs) |
+| Online multiplayer | `/play/[roomId]` is a **local single-device board**; chat is local; frontend never calls the Go server; no WebSockets | 🔴 Mock only |
+| Go server | HTTP create/move endpoints; trusts client FEN; no validation, auth or WebSockets | 🔴 Prototype |
+| Boss Mode | Resend email + mailto fallback works; invite link opens the local mock room | 🟡 Partial |
+| Knight's Tour | Done; no leaderboard | 🟢 Done |
+| Puzzles | 37 curated puzzles + streak in localStorage; no Lichess DB, no rating | 🟡 Partial |
+| Openings & Courses | 18 deep variations, courses hub with filters | 🟢 Done |
+| Supabase | Client created but **never imported**; migration not applied anywhere; no auth | 🔴 Not started |
+| VIP / promo | localStorage flag set by client-side check of `"chess"`; **nothing is gated** | 🟠 Cosmetic |
+| CI | Typecheck, tests, Next build, `go build`. No lint despite job name | 🟡 Partial |
+
+### 0.2 Correctness Bugs (fix first)
+
+1. **Bot games lose their move history after every bot move.** `components/chess/ai-bots.tsx:269` does `setGame(new Chess(currentGame.fen()))`, and a FEN carries no history. Consequences:
+   - `ChessEvaluator.getBookMove` compares a 1–2 move "history" against opening lines that start at move 1, so 2000+ ELO bots can play "book" replies in the middlegame whenever the SAN happens to be legal.
+   - Threefold repetition is never detected in bot games.
+   - Fun eval mode ("reveal every 5 moves", `ai-bots.tsx:170`) never fires because history length never reaches 5.
+   - Gemini gets ≤ 2 moves of context; any PGN export/review would be wrong.
+   - Same pattern after Hidden Queen moves: `pass-and-play.tsx:237`, `:268`.
+   - **Fix:** never rebuild `Chess` from FEN just to trigger a re-render. Keep one instance and bump a version counter, or clone with `loadPgn(game.pgn())`. See the `useChessGame` hook in §0.4.
+2. **The under-promotion picker never makes the move.** The picker button (`components/chess/board.tsx:530`) calls `attemptMove`, which re-enters the promotion branch (`board.tsx:136`) and returns `true` without moving. It is hidden today only because `autoQueen` is hard-coded to `true` (`pass-and-play.tsx:129`) and no other mode passes the prop, so **under-promotion is impossible everywhere**. The picker also opens for illegal pawn moves to the back rank because legality isn't checked first.
+3. **Hidden Queen corrupts the board on the back rank.** `executeQueenMove` (`pass-and-play.tsx:94`) calls `remove`/`put` before `game.load`. chess.js rejects pawns on ranks 1/8 (`Invalid FEN: some pawns are on the edge rows`, verified), so a queen move to rank 1/8 throws after the board was already mutated. The throw is not caught (`board.tsx:142` sits outside the `try`). Related rule gaps:
+   - No self-check test: a queen move can leave your own king in check.
+   - chess.js thinks the disguised piece is a pawn, so checks, mates and the opponent's legal king moves ignore its queen attacks.
+   - An en-passant capture of a secret pawn isn't detected (`pass-and-play.tsx:295` only checks `move.to`).
+4. **Clocks lose time.** In `app/play/[roomId]/page.tsx` and `pass-and-play.tsx:161`, a 1-second `setInterval` restarts on every turn change (`game.turn()` is in the deps). Any move made in under 1 s costs nothing, and the leftover fraction of each second is dropped. Timeout side effects (sound, score) also run inside `setState` updaters, which StrictMode calls twice in dev, so the score goes up by 2.
+   - **Fix:** a `useChessClock` hook that stores the deadline as a `performance.now()` timestamp, derives remaining time, supports increment, and fires side effects from an effect.
+5. **The bot search freezes the UI.** Magnus (depth 7 in endgames) and Hikaru (depth 6) search synchronously on the main thread with no time limit (`ai-bots.tsx:245`). The eval bar also runs a depth-2 search on the main thread after every move (`ai-bots.tsx:192`).
+6. **Engine and review quality.**
+   - Mate scores ignore distance, so a bot may not pick the fastest mate.
+   - Forward pruning at depth ≤ 2 keeps only 5 quiet moves (`evaluator.ts:353`), which misses quiet defences and mates.
+   - No king-safety or endgame tables.
+   - `analyzeFullGame` grades each move by the 1-ply static-eval change, so normal trades look like "brilliant" then "blunder". "Book" just means the first 4 plies.
+7. **Online room is single-player.** Both colours are playable from one browser. The "You (White)" label and clock positions stay fixed when the view flips, and chat never leaves the page.
+8. **The 3D toggle shows a new game, not the current one** (`app/page.tsx:18`; `setDemoGame` is never used).
+9. **Premove gaps.** No legal-move dots while premoving (`game.moves()` returns `[]` for the side not to move), only one premove (the plan says up to 3), and a failed premove plays the normal move sound.
+
+### 0.3 Security Findings
+
+1. **`/api/boss/challenge` is an open email relay into the owner's inbox.**
+   - Public, no auth, no rate limit: anyone can spam the inbox through the project's Resend account.
+   - `challengerName`, `challengerElo` and `message` go **unescaped into the email HTML**, so an attacker can inject HTML and links into mail sent from your sender.
+   - No type or length validation.
+   - The recipient address is hard-coded in source; move it to a `BOSS_EMAIL` env var.
+2. **`/api/ai/chat` trusts all input.**
+   - `botName`, `event`, `pgn` and `lastMove` are pasted straight into the prompt: prompt injection and unbounded token use. The route is effectively an open Gemini proxy.
+   - The 2-second "global" cooldown lives in module memory: it is per serverless instance, shared by all users (one user's traffic silences everyone else), and doesn't stop abuse across instances.
+   - No timeout on the model call. The response exposes `keyIndex`.
+   - **Fix:** allowlist `botName`; cap field lengths; restrict `pgn`/`lastMove` to SAN characters; per-IP rate limit (Vercel KV/Upstash or a Supabase table); `AbortSignal.timeout(~4000)`.
+3. **Supabase RLS holes** (`supabase/migrations/01_initial_schema.sql`), which matter as soon as auth goes live:
+   - The "Users can update their own profile" policy lets a user set their own `is_vip`, `elo_*` and `used_promo_code`. Restrict the updatable columns, or route those writes through a `security definer` RPC.
+   - The `games` UPDATE policy lets either player rewrite `result` and `pgn`. Results must be written by the server (service role) only.
+   - No trigger creates a `profiles` row on signup. The `game_moves` table from §4 is missing. No indexes on foreign-key columns.
+4. **Go server** (`server/main.go`):
+   - `Access-Control-Allow-Origin: *`, no player identity: anyone can move for either colour.
+   - Accepts client FEN/SAN without validation, contradicting §5.1.
+   - Rooms are never deleted (memory grows without bound).
+   - Room IDs are `room-<nanos % 1e6>`, which collide and are guessable.
+   - No body-size limit, no graceful shutdown.
+5. **Promo code** is checked in the browser, and the error message hints the answer ("Hint: Try code 'chess'"). That's fine for an easter egg, but must move server-side if VIP ever gates anything real.
+
+### 0.4 Architecture & Code Health
+
+- **No single owner of game state.** Seven components each create `Chess` instances, play sounds, detect mate/draw and run clocks. `Chessboard` mutates its `game` prop in place (`board.tsx:154`) while parents also replace it. This is the root cause of bugs #1, #3 and #4.
+  - Extract `lib/chess/use-chess-game.ts`: owns the instance and exposes `move()`, `undo()`, `history`, `pgn`, `status` (mate/draw/threefold/timeout), sound triggers and a version counter.
+  - Extract `lib/chess/use-chess-clock.ts`.
+  - Make `Chessboard` controlled: it proposes moves through `onMove` and never mutates props.
+- **One client page for everything.** `app/page.tsx` is `"use client"` and switches tabs in state. There are no URLs per mode (no deep links, back button or sharing), and every mode plus Three.js ships in one 324 kB bundle.
+  - Move modes to routes (`/bots`, `/pass-and-play`, `/puzzles`, `/learn`, `/variants`, `/knights-tour`, `/boss`) under a shared layout with the navbar.
+  - Load `Board3D` with `next/dynamic(..., { ssr: false })`.
+- **Dead code:** `components/chess/game-review-modal.tsx` (never rendered), `components/chess/eval-bar.tsx` (duplicate of `evaluation-bar.tsx`), `lib/supabase/client.ts` (never imported), and the `next.config.ts` webpack `asyncWebAssembly` + `serverActions` settings (there is no WASM and there are no server actions). Wire each one up or delete it.
+- **Engine off the main thread.** Move `ChessEvaluator` into a Web Worker (`new Worker(new URL("./engine.worker.ts", import.meta.url))`) with iterative deepening and a time budget per bot. That fixes the freezes without new dependencies. Stockfish.wasm stays optional. Note that Stockfish is **GPL-3.0**: shipping it means offering its source and checking compatibility with the repo's MIT licence.
+- **Gemini usage doesn't match §5.2.** `ai-bots.tsx:302` calls the API on every bot move, "normal move" included, with no 12-second client cooldown.
+- **Settings are scattered.** Each component uses its own localStorage keys. There is no global settings store for sound (`SoundEngine.setEnabled` exists but nothing calls it), piece set, auto-queen, coordinates or eval mode.
+- **Naming drift:** "Prin Chess" (UI/README), "VibeChess" (`.env.example`), "princhess" (Go), "chess-app" (package). Pick one.
+- `@types/three` belongs in `devDependencies`.
+
+### 0.5 UX & Accessibility
+
+- **No ARIA attributes anywhere in the codebase.** Board squares are clickable `div`s: no keyboard play and no screen-reader move announcements. Modals have no `role="dialog"`, Escape handling or focus trap. Check, last move and legal moves are shown by colour only.
+- **No touch drag.** HTML5 drag-and-drop doesn't fire on touch screens, so tablets (the main target for dual-board Pass & Play) can only tap-tap. Switch to pointer events.
+- **No sound on/off or volume control** in the UI.
+
+### 0.6 Testing & Tooling
+
+- **Two test files test copies of the logic.** The suites cover chess.js and the data files well, but `tests/promo.test.ts` and `tests/secret-queen.test.ts` define their own copy of the logic inside the test file, so they can't catch regressions in the app. Extract the pure logic (`lib/variants/hidden-queen.ts`, `lib/promo.ts`) and import it from both places.
+- **Untested:** board interaction, clocks, bot history/book selection, API routes, Go server.
+- **No lint.** The CI job is called "Build, Lint & Test" but never lints. `npm run lint` uses the deprecated `next lint`, and ESLint isn't installed. Add an ESLint flat config with `eslint-config-next` and `react-hooks`; it would flag the stale-closure deps at `board.tsx:218` and the clock effects. Add `go vet` for the server.
+- Every test file prints `MODULE_TYPELESS_PACKAGE_JSON` warnings.
+
+### 0.7 Security Pass 2: Dependencies, Secrets, Headers, CI (2026-11-16)
+
+**Checked and clean ✅**
+- **Git history:** no API keys, Resend keys, JWTs or Supabase service keys in any commit on any branch (pattern scan of `git log --all -p`). Only `.env.example` was ever committed; `.env.local` is ignored and untracked.
+- **No server secrets reach the client:** no `"use client"` file reads `process.env`; only the two `NEXT_PUBLIC_SUPABASE_*` values are public, which is intended for the anon key.
+- **No `dangerouslySetInnerHTML`.** React escapes all rendered text (chat, names, war cry).
+- **Untrusted JSON:** both localStorage reads (`courses-hub.tsx:48`, `puzzle-arena.tsx:113`) sit in `try/catch`.
+- **`go vet`:** clean on `server/`.
+- The Gemini key travels in a request header, not the URL, so the `console.warn` of error messages in `/api/ai/chat` doesn't leak it.
+
+**New findings**
+
+| # | Severity | Finding | Fix |
+|---|---|---|---|
+| S1 | High | **Boss email link can be steered.** `/api/boss/challenge` builds `inviteLink` from the client-supplied `roomId` and `req.nextUrl.origin` (derived from the Host header), then writes it **unescaped into an HTML `href`**. Attribute injection lets an attacker put arbitrary links and markup into mail sent as "Prin Chess Boss Arena". | Generate `roomId` on the server with `crypto.randomUUID()`; build links from a configured `APP_URL` env var; HTML-escape every interpolated value. |
+| S2 | High (dev-time) | **`npm audit`: PostCSS ≤ 8.5.22 bundled inside `next@15.5.29`** (XSS in stringify output, source-map path traversal and file read: GHSA-qx2v-qp2m-jg93, GHSA-6g55-p6wh-862q, GHSA-fxqj-rqcc-2cmp, GHSA-r28c-9q8g-f849). Only exploitable by processing attacker-controlled CSS at build time, so real risk here is low. The only fix npm offers is `next@16`. | Track it; schedule the Next 16 upgrade (Milestone B). Don't run `npm audit fix --force` blindly; it's a major upgrade. |
+| S3 | Medium | **No security headers.** No CSP, no `frame-ancestors`/`X-Frame-Options` (clickjacking), no `Referrer-Policy` (invite room IDs can leak through Referer), no `Permissions-Policy`, no `X-Content-Type-Options`. `X-Powered-By: Next.js` is sent. | Add `headers()` in `next.config.ts` with a CSP limited to `'self'` (connect to Supabase/Go host when they exist), `frame-ancestors 'none'`, `Referrer-Policy: strict-origin-when-cross-origin`, `nosniff`, and a `Permissions-Policy` that disables camera/mic/geolocation; set `poweredByHeader: false`. |
+| S4 | Medium | **Config drift on the Boss recipient.** `.env.local` defines `BOSS_ALERT_EMAIL`, but the route ignores it and uses a hard-coded address; `.env.example` doesn't document it. Conversely, `NEXT_PUBLIC_GO_WS_SERVER_URL` is documented but read nowhere. | Read `BOSS_ALERT_EMAIL` (fail closed if missing); sync `.env.example` with what the code actually reads. |
+| S5 | Medium | **Go server has no HTTP timeouts or body limit.** `http.ListenAndServe` with the default server is open to slow-client (Slowloris) connection exhaustion; request bodies are unbounded. The port is hard-coded to `:8080`, so cloud hosts that inject `PORT` won't work. | Use `http.Server{ReadHeaderTimeout, ReadTimeout, WriteTimeout, IdleTimeout}`, `http.MaxBytesReader`, `PORT` from env, an allowed-origins list instead of `*`, and graceful shutdown on SIGTERM. |
+| S6 | Medium | **CI supply chain.** The workflow has no `permissions:` block, so `GITHUB_TOKEN` gets the repo's default (possibly write). Actions are pinned to moving tags (`@v4`, `@v5`). No dependency or vulnerability scanning. | Add `permissions: contents: read`; pin actions to commit SHAs; add `.github/dependabot.yml` (npm, gomod, github-actions); add `npm audit --omit=dev --audit-level=high` and `govulncheck` steps; optionally enable CodeQL. |
+| S7 | Low | **Guessable IDs.** Room and boss IDs use `Math.random()` (6 base-36 chars, `boss-mode.tsx:97`); Go uses `nanos % 1e6`. Fine for a local mock, but once rooms are real, anyone who guesses an ID can join or spectate. | `crypto.randomUUID()` (browser and Node) / `crypto/rand` (Go), created server-side. |
+| S8 | Low | **Silent Supabase misconfiguration.** `lib/supabase/client.ts` falls back to a placeholder URL and key, so a missing env var surfaces later as confusing network errors. | Throw at startup when the env vars are missing (after build-time placeholders are handled in CI). |
+| S9 | Low | **Unchecked error responses.** `boss-mode.tsx:111` reads `res.json()` without checking `res.ok`, so a 500 shows "challenge sent" with an `undefined` invite link. It also uses `alert()` for errors. | Check `res.ok`, show the error inline. |
+| S10 | Info | **Abuse budget.** Neither API route has rate limiting, so a script can burn the Gemini free-tier quota (denying banter to real players) and the Resend quota. | One shared per-IP limiter used by both routes (Vercel KV/Upstash, or a Supabase table once it exists). |
+
+### 0.8 Other Improvements Found
+
+- **Missing app basics:** no `public/` folder, so no favicon, app icons or Open Graph image. No `app/error.tsx`, `app/not-found.tsx` or `loading.tsx`, so any render error white-screens the whole app. No `viewport`/`themeColor` metadata. An error boundary around each mode would stop a crash in one mode (e.g. the Hidden Queen throw in §0.2 #3) from taking down the page.
+- **Audio lifecycle:** the AudioContext in `SoundEngine` is created on first sound, which is fine, but nothing exposes mute or volume, and `boss-mode.tsx` creates a second, separate AudioContext for music. Use one engine for both.
+- **Timers on unmount:** many `setTimeout` calls (bot move delay, announcements, "copied" flags) are never cleared, so switching tabs mid-bot-move can apply a bot move or set state on an unmounted or reset game (`ai-bots.tsx:211`, `:242`). The `useChessGame` hook should own and cancel pending bot moves.
+- **Offline/PWA potential:** everything except Gemini and email already works client-side. A web manifest and service worker would make bots, puzzles, Pass & Play and courses work offline, which suits the tablet Pass & Play use case.
+- **Persistence:** nothing survives a refresh mid-game. Saving the current PGN per mode in localStorage is cheap now and becomes Supabase-backed later.
+- **Tooling:** add `"engines": { "node": ">=20" }` to `package.json` (the README says Node ≥ 20 and CI uses 22), plus an `.nvmrc`. Bump the `go.mod` directive from 1.22, which no longer gets security patches; CI should use the same version.
+
+### 0.9 Prioritized Backlog
+
+**Milestone A: Stabilize (bugs and security only, no new features) — ✅ COMPLETED**
+1. [x] `useChessGame` hook + controlled `Chessboard`; fixes history loss (bug #1).
+2. [x] Fix the promotion picker; add an auto-queen setting (bug #2).
+3. [x] Hidden Queen: handle the back rank (promote the disguise on rank 1/8), reject self-check, detect en-passant capture; move the logic to `lib/variants/` with real tests (bug #3).
+4. [x] `useChessClock` with timestamps and increment (bug #4).
+5. [x] Engine in a Web Worker with a time budget; mate-distance scoring; remove the depth ≤ 2 quiet-move cap or raise it (bugs #5, #6).
+6. [x] Harden both API routes: validation, HTML escaping, server-generated room IDs + `APP_URL`, one shared per-IP rate limiter, timeout, read `BOSS_ALERT_EMAIL` (§0.3 #1–2, §0.7 S1, S4, S9, S10).
+7. [x] Security headers + `poweredByHeader: false` in `next.config.ts` (§0.7 S3).
+8. [x] CI: `permissions: contents: read`, SHA-pinned actions, Dependabot, `npm audit` + `govulncheck` steps (§0.7 S6).
+9. [x] Add `app/error.tsx`, `not-found.tsx` and per-mode error boundaries so a single mode can't white-screen the app (§0.8).
+
+**Milestone B: Structure & Quality**
+
+10. One route per mode; dynamic import for Three.js; wire up or delete the dead code; connect 3D view to the active game.
+11. ESLint + `react-hooks` in CI; replace copy-tests with tests that import app code; unit-test the new hooks.
+12. Accessibility pass (keyboard board, ARIA labels, dialog semantics) + pointer-event drag.
+13. Global settings store (sound, theme, piece set, auto-queen, eval mode).
+14. Upgrade to Next 16 to clear the PostCSS advisories (§0.7 S2); bump the Go version; add `engines`/`.nvmrc`.
+15. Persist in-progress games (PGN in localStorage); cancel pending bot-move timers on unmount/reset; single audio engine with mute/volume.
+16. Show the game review at game end (bots, Pass & Play), with search-based grading in the worker.
+
+**Milestone C: A real backend (before anything is labelled "online")**
+
+17. Pick the transport. **Recommendation:** Supabase Realtime plus a server-authoritative move function (Edge Function or Postgres RPC running chess.js). That is one fewer service to deploy and run. Keep the Go server only if Supabase limits are actually hit (then apply §0.7 S5: timeouts, body limits, `PORT` env, origin allowlist). Either way: server-side move validation, server clocks, player identity per colour, room expiry.
+18. Supabase Auth, a profile-creation trigger, corrected RLS (§0.3 #3); persist games and puzzle history.
+19. VIP decision: either an easter egg (keep it client-only and drop the "monetization" wording) or a real entitlement (server-side redeem + RLS-protected `is_vip`).
+
+**Milestone D: Planned features from §2**, after A–C: multi-premove queue, more themes and piece sets, Lichess puzzle import + puzzle rating, Knight's Tour leaderboard, spectators, optional Stockfish.
+
+---
+
 ## 1. Executive Summary & Architecture Overview
 
 This platform is designed to be a modern, lightning-fast, and feature-complete alternative to Chess.com and Lichess. It combines:
@@ -16,6 +189,8 @@ This platform is designed to be a modern, lightning-fast, and feature-complete a
 5. **Google AI Studio (Gemini Flash API)** powering custom-styled AI characters (Hikaru, Magnus, Hustler, Noob) with live trash-talk and conversational coaching—optimized for free tier rate limits.
 6. **Unique Game Modes & Training:** Pass & Play (Flip vs. Dual-Board Split-Screen), Boss Mode (Email challenge to `shakyaayush82@gmail.com`), Knight's Tour mini-game, Opening Academy, and Variant playground.
 7. **Monetization & VIP Promo System:** Freemium features with promo code bypass (`"chess"` unlocks 100% VIP access for free).
+
+> **Status:** items 3 (Go/Realtime multiplayer) and 4 (Stockfish.wasm) are not implemented yet. The app uses a custom minimax engine on the main thread, and the online room is a local mock. See §0.1.
 
 ```mermaid
 flowchart TD
@@ -159,7 +334,7 @@ flowchart TD
 
 ---
 
-### E. Analysis, "Game Review" & Live "Fun Analysis"
+### D. Analysis, "Game Review" & Live "Fun Analysis"
 - **Stockfish.wasm Web Worker Analysis (Zero Cloud Cost):**
   - Runs 100% on the client browser—high-depth calculation with zero server latency.
   - Live Evaluation Bar (+/- decimal score or `#M` for mate).
@@ -183,7 +358,7 @@ flowchart TD
 
 ---
 
-### F. Puzzles, Academy & Training Tools
+### E. Puzzles, Academy & Training Tools
 - **Puzzles Engine:**
   - Pull puzzles from the curated open-source Lichess puzzle database (over 3M+ puzzles).
   - Categorized by themes: Pin, Fork, Skewer, Back Rank, Mate in 1/2/3, Endgame, Opening Traps.
@@ -215,60 +390,54 @@ flowchart TD
 
 ## 3. Technology Stack & Directory Structure
 
+**Stack in use:** Next.js 15.5 (App Router) · React 19 · TypeScript · Tailwind CSS 3 · chess.js 1.0 beta · Three.js 0.187 · lucide-react · canvas-confetti · `@google/generative-ai` · Resend (via `fetch`) · Go 1.22 (prototype server) · Node test runner.
+**Declared but unused:** `@supabase/supabase-js`, `@supabase/ssr`.
+
+The earlier `apps/web` + `services/game-server` monorepo layout was never adopted. **Keep the flat layout**: it's one app and one optional service, and a monorepo adds tooling with no payoff at this size. `(planned)` marks items from §0.9 that don't exist yet.
+
 ```
 c:\Vibe Projects\Chess\
-├── apps/
-│   └── web/                               # Next.js 15 Full-Stack Application
-│       ├── app/
-│       │   ├── (auth)/                    # Sign-in, Sign-up, Forgot-password
-│       │   ├── (game)/
-│       │   │   ├── play/                  # Play lobby (Time controls, mode picker)
-│       │   │   │   ├── [roomId]/          # Online multiplayer room
-│       │   │   │   └── bots/              # Bot selection & play arena
-│       │   │   ├── pass-and-play/         # Dual-screen & Flip Pass-and-Play
-│       │   │   ├── boss-mode/             # "Challenge Ayush" Epic Arena
-│       │   │   ├── mini-games/            # Knight's Tour, Variants
-│       │   │   └── analysis/              # Game review & PGN importer
-│       │   ├── puzzles/                   # Daily puzzle & Puzzle Rush
-│       │   ├── learn/                     # Tutorials & Opening Explorer
-│       │   ├── blog/                      # Strategy articles & guides
-│       │   ├── api/
-│       │   │   ├── ai/chat/               # Gemini API proxy (rate-limited & throttled)
-│       │   │   ├── boss/challenge/        # Email dispatcher for Ayush challenge
-│       │   │   └── promo/redeem/          # Promo code engine ("chess" validator)
-│       ├── components/
-│       │   ├── chess/
-│       │   │   ├── board-2d/              # Canvas/SVG 2D Board with arrows & highlights
-│       │   │   ├── board-3d/              # Three.js / R3F 3D Chessboard
-│       │   │   ├── eval-bar/              # Real-time evaluation bar
-│       │   │   ├── move-list/             # Move notation panel & history
-│       │   │   ├── clock/                 # Synchronized chess timer
-│       │   │   └── promotion-modal/       # Under-promotion selection
-│       │   ├── bot-chat/                  # In-game AI trash-talk interface
-│       │   ├── split-screen/              # Dual-board pass-and-play controller
-│       │   └── ui/                        # Radix UI / shadcn/ui components
-│       ├── lib/
-│       │   ├── chess/                     # chess.js wrapper, rules, FEN/PGN utilities
-│       │   ├── engine/                    # Stockfish.wasm worker manager
-│       │   ├── supabase/                  # Supabase client & server clients
-│       │   ├── audio/                     # Sound effect synthesizer & audio player
-│       │   └── gemini/                    # Gemini Flash prompts & bot personality matrices
-│       └── public/
-│           ├── pieces/                    # SVG & PNG piece sets (Neo, Alpha, Staunton...)
-│           ├── sounds/                    # Move, capture, check, boss music audio files
-│           ├── stockfish/                 # stockfish.js & stockfish.wasm binaries
-│           └── models/                    # 3D GLTF chess piece models
-├── services/
-│   └── game-server/                       # Go (Golang) WebSocket Server (Optional / Scalable)
-│       ├── cmd/server/main.go             # High-concurrency game server entry
-│       ├── pkg/room/                      # Room management & matchmaking
-│       ├── pkg/chess/                     # Authoritative move validation & clock tracker
-│       └── pkg/ws/                        # WebSocket connection hub & lag compensation
-├── supabase/
-│   ├── migrations/                        # SQL schema migrations (RLS, tables, triggers)
-│   └── functions/                         # Supabase Edge functions (Boss email, webhooks)
-├── plan.md                                # This Master Plan
-└── README.md                              # Project Documentation
+├── app/
+│   ├── layout.tsx                 # Root layout & metadata
+│   ├── page.tsx                   # Single client page; tabs held in state (→ routes per mode, §0.9 #10)
+│   ├── play/[roomId]/page.tsx     # "Online" room: currently local-only mock
+│   ├── (planned) bots/ pass-and-play/ puzzles/ learn/ variants/ knights-tour/ boss/
+│   └── api/
+│       ├── ai/chat/route.ts       # Gemini banter proxy (needs validation + rate limit)
+│       └── boss/challenge/route.ts# Boss email via Resend + mailto fallback (needs escaping + rate limit)
+├── components/
+│   ├── chess/
+│   │   ├── board.tsx              # 2D board, arrows, highlights, premove, promotion picker
+│   │   ├── board-3d.tsx           # Three.js board (not wired to live games)
+│   │   ├── pieces.tsx             # SVG piece set
+│   │   ├── ai-bots.tsx            # Bot arena + Gemini chat
+│   │   ├── pass-and-play.tsx      # Dual board / flip / Hidden Queen / 3-Check / odds
+│   │   ├── variants-play.tsx      # Variant playground
+│   │   ├── knights-tour.tsx       # Knight's Tour mini-game
+│   │   ├── boss-mode.tsx          # Challenge Ayush arena
+│   │   ├── evaluation-bar.tsx     # Eval bar (in use)
+│   │   ├── eval-bar.tsx           # Unused duplicate → delete
+│   │   ├── game-review-modal.tsx  # Never rendered → wire up (§0.9 #16)
+│   │   └── settings-modal.tsx     # Bot-arena settings
+│   ├── learn/                     # opening-explorer.tsx, courses-hub.tsx
+│   ├── puzzles/puzzle-arena.tsx
+│   ├── navigation/navbar.tsx
+│   └── promo/promo-modal.tsx
+├── lib/
+│   ├── engine/evaluator.ts        # Minimax + quiescence, bot move picker, game analysis
+│   ├── (planned) engine/engine.worker.ts
+│   ├── (planned) chess/use-chess-game.ts, chess/use-chess-clock.ts
+│   ├── (planned) variants/hidden-queen.ts
+│   ├── data/                      # openings.ts, puzzles.ts, courses.ts
+│   ├── audio/sound.ts             # Procedural Web Audio effects
+│   ├── supabase/client.ts         # Unused until Milestone C
+│   └── utils.ts
+├── server/                        # Go prototype (main.go, go.mod)
+├── supabase/migrations/           # 01_initial_schema.sql (not yet applied; RLS fixes needed)
+├── tests/                         # node:test suites
+├── .github/workflows/ci.yml       # tsc, tests, build, go build
+├── plan.md
+└── README.md
 ```
 
 ---
@@ -345,9 +514,13 @@ erDiagram
     }
 ```
 
+> **Schema status:** the migration contains `profiles`, `games`, `rematch_scores` and `puzzle_history`. `game_moves` is not created yet. Fix the RLS gaps in §0.3 #3 before enabling auth.
+
 ---
 
 ## 5. Critical Engineering Safeguards, Bug Mitigations & Security
+
+> **Status:** these are design targets, not implemented safeguards. There is no server-authoritative state, no move validation on the server, no RTT compensation and no anti-cheat. Today Gemini protection is a canned-line fallback plus a 2-second per-instance cooldown. Delivery order: §0.9 Milestones A and C.
 
 ### 1. Clock Tampering, Anti-Cheat & Fair Play
 - **Risk:** Malicious clients altering clock values or using external engines.
@@ -399,6 +572,20 @@ timeline
     Phase 6 : Boss Mode with Ayush Email Alert : 3D Chessboard View : Variant Modes Foundation
     Phase 7 : Security Audit & Performance Tuning : Vercel & Production Deployment : GitHub Actions CI/CD
 ```
+
+**Phase status (2026-11-16):**
+
+| Phase | Status |
+|---|---|
+| 1. Foundation | ✅ Done (no shadcn/ui; plain Tailwind) |
+| 2. Board & engine | 🟡 Board done; custom engine instead of Stockfish, runs on main thread |
+| 3. Pass & Play, mini-games, bots | ✅ Done, with bugs in §0.2 |
+| 4. Supabase, puzzles, VIP | 🟡 Puzzles/openings/courses done; Supabase and real VIP not started |
+| 5. Online multiplayer | 🔴 UI mock only |
+| 6. Boss mode, 3D, variants | 🟡 Boss email + variants done; 3D not wired to games |
+| 7. QA, security, deploy | 🟡 CI exists; security and a11y work outstanding |
+
+**Next:** work the §0.9 backlog (Milestones A → B → C) before continuing Phases 4–7.
 
 ### Phase 1: Repository Setup & Core UI Foundation
 - Initialize Git repository and setup `develop` and feature branches.

@@ -119,24 +119,13 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   };
 
   // Execute or validate move
-  const attemptMove = (from: Square, to: Square, promotionChoice = "q") => {
+  const attemptMove = (from: Square, to: Square, promotionChoice?: string): boolean => {
     const piece = game.get(from);
     if (!piece) return false;
 
     if (allowedColor && piece.color !== allowedColor) return false;
 
     const isCurrentTurn = (piece.color === "w" && game.turn() === "w") || (piece.color === "b" && game.turn() === "b");
-
-    // Check if move is pawn promotion
-    const isPawnPromotion =
-      piece.type === "p" &&
-      ((piece.color === "w" && from[1] === "7" && to[1] === "8") ||
-        (piece.color === "b" && from[1] === "2" && to[1] === "1"));
-
-    if (isPawnPromotion && !autoPromoteToQueen && isCurrentTurn) {
-      setPromotionPending({ from, to });
-      return true;
-    }
 
     if (isCurrentTurn) {
       if (customMoveHandler) {
@@ -150,11 +139,28 @@ export const Chessboard: React.FC<ChessboardProps> = ({
         }
       }
 
+      // Check legality first with chess.js
+      const legalMoves = game.moves({ square: from, verbose: true }) as Move[];
+      const legalTargetMoves = legalMoves.filter((m) => m.to === to);
+      if (legalTargetMoves.length === 0) {
+        return false;
+      }
+
+      // Check if move is a pawn promotion
+      const isLegalPromotion = legalTargetMoves.some((m) => !!m.promotion);
+
+      if (isLegalPromotion && !autoPromoteToQueen && !promotionChoice) {
+        setPromotionPending({ from, to });
+        return true;
+      }
+
+      const finalPromotion = isLegalPromotion ? (promotionChoice || "q") : undefined;
+
       try {
         const move = game.move({
           from,
           to,
-          promotion: isPawnPromotion ? promotionChoice : undefined,
+          promotion: finalPromotion,
         });
 
         if (move) {
@@ -172,7 +178,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
           }
 
           if (onMove) {
-            const allowed = onMove({ from, to, promotion: isPawnPromotion ? promotionChoice : undefined, san: move.san });
+            const allowed = onMove({ from, to, promotion: finalPromotion, san: move.san });
             if (allowed === false) {
               game.undo();
               setSelectedSquare(null);
@@ -193,7 +199,9 @@ export const Chessboard: React.FC<ChessboardProps> = ({
       }
     } else if (premoveEnabled && !allowedColor) {
       // Queue Premove
-      setPremove({ from, to, promotion: isPawnPromotion ? "q" : undefined });
+      const isPawn = piece.type === "p";
+      const isPromotionRank = (piece.color === "w" && to[1] === "8") || (piece.color === "b" && to[1] === "1");
+      setPremove({ from, to, promotion: isPawn && isPromotionRank ? (promotionChoice || "q") : undefined });
       sound.playPremove();
       setSelectedSquare(null);
       setLegalMoves([]);
@@ -527,8 +535,9 @@ export const Chessboard: React.FC<ChessboardProps> = ({
                   <button
                     key={pType}
                     onClick={() => {
-                      attemptMove(promotionPending.from, promotionPending.to, pType);
+                      const { from, to } = promotionPending;
                       setPromotionPending(null);
+                      attemptMove(from, to, pType);
                     }}
                     className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors border border-slate-600"
                   >

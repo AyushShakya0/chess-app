@@ -83,9 +83,10 @@ export interface EvaluatedMove {
 
 export class ChessEvaluator {
   // Evaluates static board position from White's perspective (positive = White leads)
-  public static evaluatePosition(game: Chess): number {
+  // Checkmates are discounted by ply distance to strongly prefer the fastest checkmate
+  public static evaluatePosition(game: Chess, ply = 0): number {
     if (game.isCheckmate()) {
-      return game.turn() === "w" ? -10000 : 10000;
+      return game.turn() === "w" ? -(10000 - ply) : 10000 - ply;
     }
     if (game.isDraw()) {
       return 0;
@@ -189,50 +190,74 @@ export class ChessEvaluator {
     }
   }
 
-  // Minimax search with move ordering, alpha-beta pruning, and quiescence horizon extension
+  // Minimax search with iterative deepening, move ordering, alpha-beta pruning, and quiescence horizon extension
   public static getBestMoveAndEval(
     game: Chess,
     depth = 2,
-    qdepth = 0
+    qdepth = 0,
+    timeBudgetMs?: number
   ): { bestMove: Move | null; score: number } {
     const isMaximizing = game.turn() === "w";
     let moves = game.moves({ verbose: true }) as Move[];
 
     if (moves.length === 0) {
-      return { bestMove: null, score: this.evaluatePosition(game) };
+      return { bestMove: null, score: this.evaluatePosition(game, 0) };
     }
 
     moves = this.orderMoves(moves);
 
-    let bestMove: Move = moves[0];
-    let bestScore = isMaximizing ? -Infinity : Infinity;
+    const startTime = Date.now();
+    let overallBestMove: Move = moves[0];
+    let overallBestScore = isMaximizing ? -Infinity : Infinity;
 
-    for (const m of moves) {
-      game.move(m);
-      const score = this.minimax(
-        game,
-        depth - 1,
-        -Infinity,
-        Infinity,
-        !isMaximizing,
-        qdepth
-      );
-      game.undo();
+    // Iterative deepening from depth 1 to target depth
+    for (let currentDepth = 1; currentDepth <= depth; currentDepth++) {
+      let depthBestMove: Move = moves[0];
+      let depthBestScore = isMaximizing ? -Infinity : Infinity;
+      let timeExpired = false;
 
-      if (isMaximizing) {
-        if (score > bestScore) {
-          bestScore = score;
-          bestMove = m;
+      for (const m of moves) {
+        if (timeBudgetMs && currentDepth > 1 && Date.now() - startTime >= timeBudgetMs) {
+          timeExpired = true;
+          break;
         }
+
+        game.move(m);
+        const score = this.minimax(
+          game,
+          currentDepth - 1,
+          -Infinity,
+          Infinity,
+          !isMaximizing,
+          qdepth,
+          1
+        );
+        game.undo();
+
+        if (isMaximizing) {
+          if (score > depthBestScore) {
+            depthBestScore = score;
+            depthBestMove = m;
+          }
+        } else {
+          if (score < depthBestScore) {
+            depthBestScore = score;
+            depthBestMove = m;
+          }
+        }
+      }
+
+      if (!timeExpired) {
+        overallBestMove = depthBestMove;
+        overallBestScore = depthBestScore;
+        // Prioritize best move at front for subsequent depth's alpha-beta cutoffs
+        moves = [overallBestMove, ...moves.filter((m) => m !== overallBestMove)];
       } else {
-        if (score < bestScore) {
-          bestScore = score;
-          bestMove = m;
-        }
+        break;
       }
     }
 
-    return { bestMove, score: bestScore };
+    return { bestMove: overallBestMove, score: overallBestScore };
   }
 
   // Opening book line lookup for Grandmaster bots
@@ -325,7 +350,8 @@ export class ChessEvaluator {
       qdepth = depth - baseDepth;
     }
 
-    const result = this.getBestMoveAndEval(game, baseDepth, qdepth);
+    const timeBudget = elo >= 2800 ? 1200 : elo >= 2000 ? 800 : undefined;
+    const result = this.getBestMoveAndEval(game, baseDepth, qdepth, timeBudget);
     return result.bestMove || moves[0];
   }
 
@@ -335,22 +361,23 @@ export class ChessEvaluator {
     alpha: number,
     beta: number,
     isMaximizing: boolean,
-    qdepth = 0
+    qdepth = 0,
+    ply = 0
   ): number {
     if (depth <= 0) {
       return qdepth > 0
         ? this.quiescence(game, alpha, beta, isMaximizing, qdepth)
-        : this.evaluatePosition(game);
+        : this.evaluatePosition(game, ply);
     }
     if (game.isGameOver()) {
-      return this.evaluatePosition(game);
+      return this.evaluatePosition(game, ply);
     }
 
     let moves = game.moves({ verbose: true }) as Move[];
     moves = this.orderMoves(moves);
 
     // Forward pruning for deeper plies to maintain sub-second GM response times
-    if (depth <= 2 && moves.length > 10) {
+    if (depth <= 2 && moves.length > 20) {
       const tactical: Move[] = [];
       const quiet: Move[] = [];
       for (const m of moves) {
@@ -360,14 +387,14 @@ export class ChessEvaluator {
           quiet.push(m);
         }
       }
-      moves = [...tactical, ...quiet.slice(0, 5)];
+      moves = [...tactical, ...quiet.slice(0, 15)];
     }
 
     if (isMaximizing) {
       let maxEval = -Infinity;
       for (const m of moves) {
         game.move(m);
-        const evaluation = this.minimax(game, depth - 1, alpha, beta, false, qdepth);
+        const evaluation = this.minimax(game, depth - 1, alpha, beta, false, qdepth, ply + 1);
         game.undo();
         maxEval = Math.max(maxEval, evaluation);
         alpha = Math.max(alpha, evaluation);
@@ -378,7 +405,7 @@ export class ChessEvaluator {
       let minEval = Infinity;
       for (const m of moves) {
         game.move(m);
-        const evaluation = this.minimax(game, depth - 1, alpha, beta, true, qdepth);
+        const evaluation = this.minimax(game, depth - 1, alpha, beta, true, qdepth, ply + 1);
         game.undo();
         minEval = Math.min(minEval, evaluation);
         beta = Math.min(beta, evaluation);

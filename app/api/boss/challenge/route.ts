@@ -1,22 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
+import { checkRateLimit, getClientIp, escapeHtml } from "@/lib/security/rate-limiter";
+import crypto from "node:crypto";
 
 export async function POST(req: NextRequest) {
   try {
-    const { challengerName, challengerElo, roomId, message } = await req.json();
+    const ip = getClientIp(req);
+    const rateLimit = checkRateLimit(ip, 10, 60 * 1000); // 10 challenges / min
+    if (!rateLimit.success) {
+      return NextResponse.json(
+        { success: false, error: "Rate limit exceeded. Please wait a minute before sending another challenge." },
+        { status: 429 }
+      );
+    }
 
-    const targetEmail = "shakyaayush82@gmail.com";
-    const inviteLink = `${req.nextUrl.origin}/play/${roomId}`;
+    const body = await req.json();
+    const rawName = typeof body.challengerName === "string" ? body.challengerName.trim() : "";
+    const rawElo = Number(body.challengerElo);
+    const rawMessage = typeof body.message === "string" ? body.message.trim() : "";
 
-    // Log the boss challenge event
-    console.log(`[BOSS MODE CHALLENGE] Challenger: ${challengerName} (${challengerElo} ELO) has challenged Ayush Shakya!`);
-    console.log(`[BOSS MODE LINK] ${inviteLink}`);
-    console.log(`[BOSS MODE MESSAGE] ${message || "No message provided"}`);
+    // Input validation
+    if (!rawName || rawName.length > 50) {
+      return NextResponse.json(
+        { success: false, error: "Invalid challenger name (must be 1-50 characters)" },
+        { status: 400 }
+      );
+    }
 
-    // Generate direct mailto link as reliable zero-config fallback
-    const emailSubject = encodeURIComponent(`⚔️ BOSS CHALLENGE: ${challengerName} (${challengerElo} ELO) has challenged you!`);
+    const challengerElo = Number.isFinite(rawElo) && rawElo >= 100 && rawElo <= 4000 ? Math.round(rawElo) : 1500;
+    const message = rawMessage.slice(0, 300);
+
+    // Escape HTML to prevent attribute injection and HTML injection in emails
+    const safeName = escapeHtml(rawName);
+    const safeMessage = escapeHtml(message || "Are you ready to face me?");
+
+    // Target email from env or verified owner address
+    const targetEmail = process.env.BOSS_ALERT_EMAIL || "shakyaayush82@gmail.com";
+
+    // Server-authoritative UUID room ID (cannot be steered by client)
+    const roomId = crypto.randomUUID();
+    const appUrl = (process.env.APP_URL || req.nextUrl.origin).replace(/\/$/, "");
+    const inviteLink = `${appUrl}/play/${roomId}`;
+
+    // Mailto fallback
+    const emailSubject = encodeURIComponent(`⚔️ BOSS CHALLENGE: ${rawName} (${challengerElo} ELO) has challenged you!`);
     const emailBody = encodeURIComponent(
       `👑 Boss Arena Challenge Alert\n\n` +
-      `${challengerName} (${challengerElo} ELO) has issued an official Grandmaster Boss Challenge to you!\n\n` +
+      `${rawName} (${challengerElo} ELO) has issued an official Grandmaster Boss Challenge to you!\n\n` +
       `War Cry: "${message || "Are you ready to face me?"}"\n\n` +
       `Accept Challenge & Enter Arena: ${inviteLink}\n`
     );
@@ -25,7 +54,6 @@ export async function POST(req: NextRequest) {
     let emailDelivered = false;
     let deliveryNote = "Direct email requires RESEND_API_KEY in .env.local; direct mailto fallback provided.";
 
-    // If RESEND_API_KEY is configured, dispatch the real-time email
     const resendKey = process.env.RESEND_API_KEY;
     if (resendKey) {
       try {
@@ -38,12 +66,12 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             from: "Prin Chess Boss Arena <onboarding@resend.dev>",
             to: targetEmail,
-            subject: `⚔️ BOSS CHALLENGE: ${challengerName} (${challengerElo} ELO) has challenged you!`,
+            subject: `⚔️ BOSS CHALLENGE: ${rawName} (${challengerElo} ELO) has challenged you!`,
             html: `
               <h2>👑 Boss Arena Challenge Alert</h2>
-              <p><strong>${challengerName}</strong> (${challengerElo} ELO) has issued an official Grandmaster Boss Challenge to you!</p>
-              <p><em>"${message || "Are you ready to face me?"}"</em></p>
-              <p><a href="${inviteLink}" style="background-color: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Accept Challenge & Enter Arena</a></p>
+              <p><strong>${safeName}</strong> (${challengerElo} ELO) has issued an official Grandmaster Boss Challenge to you!</p>
+              <p><em>"${safeMessage}"</em></p>
+              <p><a href="${encodeURI(inviteLink)}" style="background-color: #ef4444; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold;">Accept Challenge & Enter Arena</a></p>
             `,
           }),
         });
@@ -54,7 +82,7 @@ export async function POST(req: NextRequest) {
         } else {
           deliveryNote = `Resend returned status ${resendRes.status}. Use mailto fallback.`;
         }
-      } catch (e) {
+      } catch {
         deliveryNote = "Resend request failed. Use mailto fallback.";
       }
     }
@@ -64,17 +92,17 @@ export async function POST(req: NextRequest) {
       emailDelivered,
       deliveryNote,
       emailSentTo: targetEmail,
+      roomId,
       inviteLink,
       mailtoLink,
       message: emailDelivered
         ? `Challenge dispatched to Ayush at ${targetEmail}!`
         : `Challenge match room created! Click 'Send Email to Ayush' to notify him directly.`,
     });
-  } catch (error) {
-    return NextResponse.json({
-      success: false,
-      error: "Failed to dispatch boss challenge",
-    }, { status: 500 });
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Failed to dispatch boss challenge" },
+      { status: 500 }
+    );
   }
 }
-

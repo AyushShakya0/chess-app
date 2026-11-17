@@ -15,6 +15,7 @@ export const BossMode: React.FC = () => {
   const [mailtoLink, setMailtoLink] = useState("");
   const [emailDelivered, setEmailDelivered] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Web Audio Procedural Boss Theme Synthesizer
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -94,7 +95,7 @@ export const BossMode: React.FC = () => {
     if (!challengerName.trim()) return;
 
     setIsSubmitting(true);
-    const roomId = `boss-${Math.random().toString(36).substring(2, 8)}`;
+    setErrorMessage(null);
 
     try {
       const res = await fetch("/api/boss/challenge", {
@@ -103,19 +104,23 @@ export const BossMode: React.FC = () => {
         body: JSON.stringify({
           challengerName,
           challengerElo,
-          roomId,
           message: warCry,
         }),
       });
 
       const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to dispatch boss challenge");
+      }
+
       setInviteLink(data.inviteLink);
       setMailtoLink(data.mailtoLink || "");
       setEmailDelivered(data.emailDelivered || false);
       setChallengeSent(true);
       sound.playCheck();
-    } catch {
-      alert("Failed to send boss challenge. Please try again.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send challenge. Please try again.";
+      setErrorMessage(msg);
     }
 
     setIsSubmitting(false);
@@ -272,6 +277,12 @@ export const BossMode: React.FC = () => {
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
               />
             </div>
+
+            {errorMessage && (
+              <div className="p-3 bg-red-950/80 border border-red-800 rounded-xl text-xs text-red-300 font-bold animate-fade-in">
+                {errorMessage}
+              </div>
+            )}
 
             <button
               type="submit"
