@@ -3,13 +3,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Crown, Swords, Bot, Users, Zap, Compass, Dices, Box, Globe, User } from "lucide-react";
+import { Crown, Swords, Bot, Users, Zap, Compass, Dices, Box, Globe, User, Eye, Sliders } from "lucide-react";
 import { PromoModal } from "../promo/promo-modal";
 import { AuthModal } from "../auth/auth-modal";
 import { useActiveGame } from "@/lib/stores/active-game-store";
 import { useAuth } from "@/lib/stores/auth-store";
 
-export type NavTab = "bots" | "pass" | "puzzles" | "openings" | "variants" | "tour" | "boss" | "online";
+export type NavTab = "bots" | "pass" | "puzzles" | "openings" | "variants" | "tour" | "boss" | "online" | "vision" | "editor";
 
 interface NavbarProps {
   activeTab?: NavTab;
@@ -24,6 +24,8 @@ const NAV_ITEMS: { id: NavTab; href: string; label: string; icon: React.FC<{ cla
   { id: "pass", href: "/pass-and-play", label: "Pass & Play", icon: Users },
   { id: "puzzles", href: "/puzzles", label: "Puzzles", icon: Zap },
   { id: "openings", href: "/learn", label: "Courses", icon: Compass },
+  { id: "vision", href: "/vision", label: "Vision", icon: Eye },
+  { id: "editor", href: "/editor", label: "Editor", icon: Sliders },
   { id: "variants", href: "/variants", label: "Variants", icon: Dices },
   { id: "tour", href: "/knights-tour", label: "Tour", icon: Zap },
   { id: "boss", href: "/boss", label: "Boss Mode", icon: Swords },
@@ -57,6 +59,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     if (pathname === "/pass-and-play") return "pass";
     if (pathname === "/puzzles") return "puzzles";
     if (pathname === "/learn") return "openings";
+    if (pathname === "/vision") return "vision";
+    if (pathname === "/editor") return "editor";
     if (pathname === "/variants") return "variants";
     if (pathname === "/knights-tour") return "tour";
     if (pathname === "/boss") return "boss";

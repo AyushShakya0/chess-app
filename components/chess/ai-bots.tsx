@@ -5,7 +5,22 @@ import { Chess, Square, Move } from "chess.js";
 import { Chessboard } from "./board";
 import { sound } from "@/lib/audio/sound";
 import { engineClient } from "@/lib/engine/engine-client";
-import { Bot, RefreshCw, Trophy, Sparkles, Settings } from "lucide-react";
+import {
+  Bot,
+  RefreshCw,
+  Trophy,
+  Sparkles,
+  Settings,
+  Copy,
+  Check,
+  Download,
+  Upload,
+  Maximize2,
+  Minimize2,
+  X,
+  Sliders,
+} from "lucide-react";
+import Link from "next/link";
 import confetti from "canvas-confetti";
 import { EvaluationBar } from "./evaluation-bar";
 import { SettingsModal } from "./settings-modal";
@@ -157,6 +172,16 @@ export const AiBotsPlay: React.FC = () => {
   const [gameOver, setGameOver] = useState<string | null>(null);
   const [switchedMidGame, setSwitchedMidGame] = useState<string | null>(null);
 
+  // Zen / Focus Mode
+  const [isZenMode, setIsZenMode] = useState(false);
+
+  // FEN & PGN Tools
+  const [copiedFen, setCopiedFen] = useState(false);
+  const [copiedPgn, setCopiedPgn] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importInput, setImportInput] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
+
   const botTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Clear pending timers on unmount
@@ -166,6 +191,18 @@ export const AiBotsPlay: React.FC = () => {
         clearTimeout(botTimeoutRef.current);
       }
     };
+  }, []);
+
+  // Keydown listener for 'z' / 'Z' Zen toggle
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === "z" || e.key === "Z") {
+        setIsZenMode((z) => !z);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   // Initial bot greeting
@@ -188,6 +225,76 @@ export const AiBotsPlay: React.FC = () => {
     },
     [settings.evalMode]
   );
+
+  // Read initial FEN from URL query parameters (e.g. from Board Editor)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const initialFen = params.get("fen");
+      if (initialFen) {
+        try {
+          game.load(initialFen);
+          syncState();
+          updateEvaluation(game, true);
+        } catch {}
+      }
+    }
+  }, [game, syncState, updateEvaluation]);
+
+  const formatFullPgn = useCallback(() => {
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
+    let header = `[Event "Prin Chess Bot Match"]\n`;
+    header += `[Site "Prin Chess Platform"]\n`;
+    header += `[Date "${dateStr}"]\n`;
+    header += `[White "Player"]\n`;
+    header += `[Black "${selectedBot.name} (${selectedBot.elo})"]\n`;
+    header += `[Result "${game.isGameOver() ? (game.isCheckmate() ? (game.turn() === "w" ? "0-1" : "1-0") : "1/2-1/2") : "*"}"]\n\n`;
+    return header + (game.pgn() || gameHistory.map((m, i) => (i % 2 === 0 ? `${Math.floor(i / 2) + 1}. ${m}` : `${m}`)).join(" "));
+  }, [game, gameHistory, selectedBot]);
+
+  const handleCopyFen = () => {
+    navigator.clipboard.writeText(game.fen());
+    setCopiedFen(true);
+    setTimeout(() => setCopiedFen(false), 2000);
+  };
+
+  const handleCopyPgn = () => {
+    const pgnString = formatFullPgn();
+    navigator.clipboard.writeText(pgnString);
+    setCopiedPgn(true);
+    setTimeout(() => setCopiedPgn(false), 2000);
+  };
+
+  const handleDownloadPgn = () => {
+    const pgnString = formatFullPgn();
+    const blob = new Blob([pgnString], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `prin-chess-vs-${selectedBot.id}-${Date.now()}.pgn`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportSubmit = () => {
+    const trimmed = importInput.trim();
+    if (!trimmed) return;
+    try {
+      if (trimmed.includes("/") || trimmed.split(" ").length >= 4) {
+        game.load(trimmed);
+      } else {
+        game.loadPgn(trimmed);
+      }
+      syncState();
+      updateEvaluation(game, true);
+      setIsImportModalOpen(false);
+      setImportInput("");
+      setImportError(null);
+      sound.playMove();
+    } catch {
+      setImportError("Invalid FEN or PGN string. Please check the notation format.");
+    }
+  };
 
   // Switch bot cleanly without resetting the board mid-game
   const handleSelectBot = (newBot: BotPersona) => {
@@ -369,11 +476,11 @@ export const AiBotsPlay: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-start max-w-7xl mx-auto w-full">
+    <div className={`flex flex-col items-center justify-start ${isZenMode ? "max-w-3xl" : "max-w-7xl"} mx-auto w-full transition-all`}>
       {/* Arena Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
+      <div className={`w-full ${isZenMode ? "flex flex-col items-center justify-center" : "grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"}`}>
         {/* Left: Chessboard & Active Opponent Header */}
-        <div className="lg:col-span-7 xl:col-span-8 flex flex-col items-center w-full">
+        <div className={`${isZenMode ? "w-full flex flex-col items-center" : "lg:col-span-7 xl:col-span-8 flex flex-col items-center w-full"}`}>
           {/* Active Bot Bar */}
           <div className="flex items-center justify-between w-full max-w-[620px] mb-2 px-1">
             <div className="flex items-center gap-2.5">
@@ -396,6 +503,19 @@ export const AiBotsPlay: React.FC = () => {
                   Calculating...
                 </div>
               )}
+
+              {/* Zen / Focus Mode Toggle */}
+              <button
+                onClick={() => setIsZenMode((z) => !z)}
+                className={`p-1.5 rounded-xl border transition-colors ${
+                  isZenMode
+                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
+                    : "bg-slate-800 border-slate-700 text-slate-400 hover:text-white"
+                }`}
+                title={isZenMode ? "Exit Zen Mode (Z)" : "Zen Focus Mode (Press Z)"}
+              >
+                {isZenMode ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
@@ -435,6 +555,56 @@ export const AiBotsPlay: React.FC = () => {
             />
           </div>
 
+          {/* FEN & PGN Action Toolbar */}
+          <div className="flex flex-wrap items-center justify-between w-full max-w-[560px] mt-2.5 px-3 py-1.5 bg-slate-900/90 border border-slate-800 rounded-xl text-xs gap-2 shadow-inner">
+            <div className="flex items-center gap-1.5 truncate max-w-[200px] text-slate-400 font-mono text-[11px]">
+              <span className="text-slate-500 font-bold">FEN:</span>
+              <span className="truncate">{game.fen()}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={handleCopyFen}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors"
+                title="Copy position FEN to clipboard"
+              >
+                {copiedFen ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                <span>{copiedFen ? "Copied" : "FEN"}</span>
+              </button>
+              <button
+                onClick={handleCopyPgn}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors"
+                title="Copy game PGN moves"
+              >
+                {copiedPgn ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                <span>{copiedPgn ? "Copied" : "PGN"}</span>
+              </button>
+              <button
+                onClick={handleDownloadPgn}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors"
+                title="Download .PGN game file"
+              >
+                <Download className="w-3 h-3 text-slate-400" />
+                <span className="hidden sm:inline">Save</span>
+              </button>
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-semibold text-[11px] border border-blue-500/40 transition-colors"
+                title="Load custom FEN or PGN"
+              >
+                <Upload className="w-3 h-3" />
+                <span>Load</span>
+              </button>
+              <Link
+                href={`/editor?fen=${encodeURIComponent(game.fen())}`}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 font-semibold text-[11px] border border-purple-500/40 transition-colors"
+                title="Edit this position in Board Editor"
+              >
+                <Sliders className="w-3 h-3" />
+                <span className="hidden sm:inline">Editor</span>
+              </Link>
+            </div>
+          </div>
+
           {gameOver && (
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
               <div className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-center">
@@ -452,7 +622,7 @@ export const AiBotsPlay: React.FC = () => {
         </div>
 
         {/* Right: AI Opponents Selector, Live Banter & Chat */}
-        <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-3 w-full lg:max-h-[min(620px,calc(100vh-150px))] lg:overflow-y-auto pr-1">
+        <div className={`${isZenMode ? "hidden" : "lg:col-span-5 xl:col-span-4 flex flex-col gap-3 w-full lg:max-h-[min(620px,calc(100vh-150px))] lg:overflow-y-auto pr-1"}`}>
           {/* Choose AI Opponent Card */}
           <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5 shadow-xl">
             <div className="flex items-center justify-between mb-2 px-1">
@@ -573,6 +743,70 @@ export const AiBotsPlay: React.FC = () => {
         onClose={() => setIsReviewOpen(false)}
         history={game.history()}
       />
+
+      {/* Floating Zen Mode Indicator */}
+      {isZenMode && (
+        <div className="fixed bottom-6 z-40 flex items-center gap-3 bg-slate-900/95 border border-slate-700 px-5 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md animate-fade-in">
+          <div className="flex items-center gap-2">
+            <Maximize2 className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-mono font-bold text-slate-200">
+              Zen Mode Active <span className="text-slate-400 font-normal">(Press Z to toggle)</span>
+            </span>
+          </div>
+          <button
+            onClick={() => setIsZenMode(false)}
+            className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+          >
+            Exit Zen
+          </button>
+        </div>
+      )}
+
+      {/* Load Custom FEN or PGN Modal */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Upload className="w-4 h-4 text-blue-400" />
+                Load FEN or PGN Position
+              </h3>
+              <button
+                onClick={() => setIsImportModalOpen(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="py-4 space-y-3">
+              <textarea
+                value={importInput}
+                onChange={(e) => setImportInput(e.target.value)}
+                placeholder="Paste FEN (e.g. rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1) or PGN notation..."
+                className="w-full h-32 p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+              {importError && <p className="text-xs text-rose-400 font-bold">{importError}</p>}
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportError(null);
+                }}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportSubmit}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md"
+              >
+                Load Position
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
