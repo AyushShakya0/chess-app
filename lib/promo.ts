@@ -16,6 +16,6 @@ export function validatePromoCode(rawInput: string): PromoValidationResult {
   return {
     valid: false,
     plan: "NONE",
-    message: "Invalid promo code. (Hint: Try code 'chess')",
+    message: "Invalid promo code.",
   };
 }

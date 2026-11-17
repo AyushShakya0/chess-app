@@ -3,11 +3,13 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Crown, Swords, Bot, Users, Zap, Compass, Dices, Box } from "lucide-react";
+import { Crown, Swords, Bot, Users, Zap, Compass, Dices, Box, Globe, User } from "lucide-react";
 import { PromoModal } from "../promo/promo-modal";
+import { AuthModal } from "../auth/auth-modal";
 import { useActiveGame } from "@/lib/stores/active-game-store";
+import { useAuth } from "@/lib/stores/auth-store";
 
-export type NavTab = "bots" | "pass" | "puzzles" | "openings" | "variants" | "tour" | "boss";
+export type NavTab = "bots" | "pass" | "puzzles" | "openings" | "variants" | "tour" | "boss" | "online";
 
 interface NavbarProps {
   activeTab?: NavTab;
@@ -18,6 +20,7 @@ interface NavbarProps {
 
 const NAV_ITEMS: { id: NavTab; href: string; label: string; icon: React.FC<{ className?: string }> }[] = [
   { id: "bots", href: "/bots", label: "AI Bots", icon: Bot },
+  { id: "online", href: "/online", label: "Online", icon: Globe },
   { id: "pass", href: "/pass-and-play", label: "Pass & Play", icon: Users },
   { id: "puzzles", href: "/puzzles", label: "Puzzles", icon: Zap },
   { id: "openings", href: "/learn", label: "Courses", icon: Compass },
@@ -33,8 +36,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   setIs3D: propSetIs3D,
 }) => {
   const [promoOpen, setPromoOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
   const pathname = usePathname();
   const [activeGame, { toggle3D }] = useActiveGame();
+  const [auth] = useAuth();
 
   const is3DActive = typeof propIs3D === "boolean" ? propIs3D : activeGame.is3DOpen;
 
@@ -48,6 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const getEffectiveTab = (): NavTab => {
     if (propActiveTab) return propActiveTab;
+    if (pathname === "/online") return "online";
     if (pathname === "/pass-and-play") return "pass";
     if (pathname === "/puzzles") return "puzzles";
     if (pathname === "/learn") return "openings";
@@ -126,8 +132,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             })}
           </nav>
 
-          {/* Right Actions: 3D View Toggle + VIP Redeem Modal */}
-          <div className="flex items-center gap-2.5">
+          {/* Right Actions: 3D View Toggle + VIP Redeem Modal + User Account */}
+          <div className="flex items-center gap-2">
             <button
               onClick={handleToggle3D}
               aria-label="Toggle 3D View"
@@ -138,7 +144,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <Box className="w-3.5 h-3.5 text-indigo-400" />
-              <span>{is3DActive ? "3D Active" : "3D View"}</span>
+              <span className="hidden sm:inline">{is3DActive ? "3D Active" : "3D View"}</span>
             </button>
 
             <button
@@ -147,7 +153,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 hover:from-amber-500/30 hover:to-yellow-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-black shadow-sm transition-all"
             >
               <Crown className="w-3.5 h-3.5 text-amber-400" />
-              <span>VIP Pass</span>
+              <span className="hidden sm:inline">VIP Pass</span>
+            </button>
+
+            <button
+              onClick={() => setAuthOpen(true)}
+              aria-label="User Account"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all"
+            >
+              <User className="w-3.5 h-3.5 text-blue-400" />
+              <span className="max-w-[80px] sm:max-w-[110px] truncate">
+                {auth.user ? auth.profile?.username || auth.user.email?.split("@")[0] : "Sign In"}
+              </span>
             </button>
           </div>
         </div>
@@ -173,6 +190,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </header>
 
       <PromoModal isOpen={promoOpen} onClose={() => setPromoOpen(false)} />
+      <AuthModal isOpen={authOpen} onClose={() => setAuthOpen(false)} />
     </>
   );
 };

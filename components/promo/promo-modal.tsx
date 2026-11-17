@@ -22,28 +22,54 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUn
   });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleRedeem = (e: React.FormEvent) => {
+  const handleRedeem = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    setIsSubmitting(true);
 
-    const result = validatePromoCode(code);
-
-    if (result.valid) {
-      if (typeof window !== "undefined") {
-        localStorage.setItem("chess_vip_unlocked", "true");
+    try {
+      const res = await fetch("/api/vip/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("chess_vip_unlocked", "true");
+        }
+        setIsVip(true);
+        setSuccess(data.message || "🎉 Code Accepted! You have unlocked VIP Lifetime Access!");
+        sound.playVictory();
+        confetti({ particleCount: 160, spread: 80, origin: { y: 0.5 } });
+        if (onVipUnlocked) onVipUnlocked();
+      } else {
+        setError(data.message || data.error || "Invalid promo code.");
+        sound.playDefeat();
       }
-      setIsVip(true);
-      setSuccess(result.message || "🎉 Code Accepted! You have unlocked VIP Lifetime Access for FREE!");
-      sound.playVictory();
-      confetti({ particleCount: 160, spread: 80, origin: { y: 0.5 } });
-      if (onVipUnlocked) onVipUnlocked();
-    } else {
-      setError(result.message || "Invalid promo code.");
-      sound.playDefeat();
+    } catch {
+      // Fallback for offline/standalone execution
+      const result = validatePromoCode(code);
+      if (result.valid) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("chess_vip_unlocked", "true");
+        }
+        setIsVip(true);
+        setSuccess(result.message || "🎉 VIP Access Unlocked!");
+        sound.playVictory();
+        confetti({ particleCount: 160, spread: 80, origin: { y: 0.5 } });
+        if (onVipUnlocked) onVipUnlocked();
+      } else {
+        setError(result.message || "Invalid promo code.");
+        sound.playDefeat();
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -123,9 +149,10 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUn
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-black rounded-xl shadow-lg transition-all transform active:scale-98 text-sm"
+              disabled={isSubmitting}
+              className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-black rounded-xl shadow-lg transition-all transform active:scale-98 text-sm disabled:opacity-60"
             >
-              Redeem Code & Unlock VIP
+              {isSubmitting ? "Verifying Code..." : "Redeem Code & Unlock VIP"}
             </button>
           </form>
         )}

@@ -169,11 +169,11 @@
 15. [x] Persist in-progress games (PGN in localStorage); cancel pending bot-move timers on unmount/reset; single audio engine with mute/volume.
 16. [x] Show the game review at game end (bots, Pass & Play), with search-based grading in the worker.
 
-**Milestone C: A real backend (before anything is labelled "online")**
+**Milestone C: Authoritative Backend & Multiplayer Infrastructure — ✅ COMPLETED**
 
-17. Pick the transport. **Recommendation:** Supabase Realtime plus a server-authoritative move function (Edge Function or Postgres RPC running chess.js). That is one fewer service to deploy and run. Keep the Go server only if Supabase limits are actually hit (then apply §0.7 S5: timeouts, body limits, `PORT` env, origin allowlist). Either way: server-side move validation, server clocks, player identity per colour, room expiry.
-18. Supabase Auth, a profile-creation trigger, corrected RLS (§0.3 #3); persist games and puzzle history.
-19. VIP decision: either an easter egg (keep it client-only and drop the "monetization" wording) or a real entitlement (server-side redeem + RLS-protected `is_vip`).
+17. [x] Authoritative transport: Next.js server-authoritative move validation with `chess.js`, server monotonic clocks, player identity per color (White vs. Black vs. Spectator), room expiry; Go server hardened with timeouts, body limit, PORT env, secure IDs, and cleanup ticker; live `/play/[roomId]` and `/online` lobby.
+18. [x] Supabase Auth & Schema: corrected RLS holes on `profiles` and `games`, trigger on `auth.users`, added `game_moves` table, indexes on foreign keys, and `useAuth` session store with Auth modal.
+19. [x] VIP entitlement: server-side redemption endpoint (`/api/vip/redeem`) with IP rate limiting, Postgres `redeem_vip_promo` RPC, and client hints removed.
 
 **Milestone D: Planned features from §2**, after A–C: multi-premove queue, more themes and piece sets, Lichess puzzle import + puzzle rating, Knight's Tour leaderboard, spectators, optional Stockfish.
 

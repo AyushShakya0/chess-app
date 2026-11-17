@@ -10,7 +10,7 @@ const ipMap = new Map<string, RateLimitRecord>();
 
 // Cleanup stale entries every 5 minutes
 if (typeof setInterval !== "undefined") {
-  setInterval(() => {
+  const timer = setInterval(() => {
     const now = Date.now();
     for (const [ip, record] of ipMap.entries()) {
       if (now > record.resetTime) {
@@ -18,6 +18,9 @@ if (typeof setInterval !== "undefined") {
       }
     }
   }, 5 * 60 * 1000);
+  if (typeof (timer as any)?.unref === "function") {
+    (timer as any).unref();
+  }
 }
 
 /**
