@@ -2,11 +2,17 @@
 
 import React, { useState, useEffect } from "react";
 import { sound } from "@/lib/audio/sound";
-import { RotateCcw, Undo2, Award, Zap } from "lucide-react";
+import { RotateCcw, Undo2, Award, Zap, Trophy, CheckCircle2, X } from "lucide-react";
 import confetti from "canvas-confetti";
 import { ChessPiece } from "./pieces";
+import {
+  type BoardSize,
+  type KnightsTourRecordsMap,
+  loadKnightsTourRecords,
+  recordTourProgress,
+} from "@/lib/chess/knights-tour-records";
 
-export type BoardSize = 5 | 6 | 7 | 8;
+export type { BoardSize };
 
 interface Position {
   r: number;
@@ -21,6 +27,10 @@ export const KnightsTour: React.FC = () => {
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [isStuck, setIsStuck] = useState<boolean>(false);
+
+  // Leaderboard & Record Engine
+  const [records, setRecords] = useState<KnightsTourRecordsMap>(loadKnightsTourRecords);
+  const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
 
   const totalSquares = boardSize * boardSize;
 
@@ -105,6 +115,9 @@ export const KnightsTour: React.FC = () => {
       setVisited([first]);
       setIsRunning(true);
       sound.playMove();
+
+      const { updatedRecords } = recordTourProgress(records, boardSize, 1, 0, false);
+      setRecords(updatedRecords);
       return;
     }
 
@@ -118,8 +131,12 @@ export const KnightsTour: React.FC = () => {
     setCurrentPos(next);
     sound.playMove();
 
+    const isComplete = newVisited.length === totalSquares;
+    const { updatedRecords } = recordTourProgress(records, boardSize, newVisited.length, timer, isComplete);
+    setRecords(updatedRecords);
+
     // Check if completed
-    if (newVisited.length === totalSquares) {
+    if (isComplete) {
       setIsCompleted(true);
       setIsRunning(false);
       sound.playVictory();
@@ -156,6 +173,8 @@ export const KnightsTour: React.FC = () => {
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   };
 
+  const currentRecord = records[boardSize] || { completed: false, maxVisited: 0, bestTimeSec: null, completionsCount: 0 };
+
   return (
     <div className="flex flex-col items-center justify-center p-4 max-w-4xl mx-auto w-full">
       {/* Header & Controls */}
@@ -171,27 +190,38 @@ export const KnightsTour: React.FC = () => {
             </p>
           </div>
 
-          {/* Board Size Selector */}
-          <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-700">
-            {([5, 6, 7, 8] as BoardSize[]).map((sz) => (
-              <button
-                key={sz}
-                onClick={() => resetGame(sz)}
-                className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                  boardSize === sz
-                    ? "bg-blue-600 text-white shadow-md scale-105"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                {sz}x{sz}
-              </button>
-            ))}
+          {/* Board Size Selector & Leaderboard Button */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-slate-900/90 p-1 rounded-xl border border-slate-700">
+              {([5, 6, 7, 8] as BoardSize[]).map((sz) => (
+                <button
+                  key={sz}
+                  onClick={() => resetGame(sz)}
+                  className={`px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                    boardSize === sz
+                      ? "bg-blue-600 text-white shadow-md scale-105"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  {sz}x{sz}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setShowLeaderboard(true)}
+              className="flex items-center gap-1.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 px-3 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors shadow-sm"
+              title="View Records & Best Clears"
+            >
+              <Trophy className="w-4 h-4 text-amber-400" />
+              <span className="hidden sm:inline">Records</span>
+            </button>
           </div>
         </div>
 
         {/* Stats & Actions Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 mt-5 pt-4 border-t border-slate-700/60">
-          <div className="flex items-center gap-6 font-mono text-sm sm:text-base">
+          <div className="flex flex-wrap items-center gap-5 font-mono text-sm sm:text-base">
             <div className="flex items-center gap-2">
               <Award className="w-5 h-5 text-emerald-400" />
               <span className="text-slate-300">Visited:</span>
@@ -203,6 +233,15 @@ export const KnightsTour: React.FC = () => {
             <div className="flex items-center gap-2">
               <span className="text-slate-300">Time:</span>
               <span className="font-bold text-blue-400">{formatTimer(timer)}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 text-xs sm:text-sm">Best:</span>
+              <span className="font-bold text-amber-400 text-xs sm:text-sm">
+                {currentRecord.bestTimeSec !== null
+                  ? `${formatTimer(currentRecord.bestTimeSec)} (Cleared)`
+                  : `${currentRecord.maxVisited} / ${totalSquares}`}
+              </span>
             </div>
           </div>
 
@@ -294,7 +333,78 @@ export const KnightsTour: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Leaderboard & Records Modal */}
+      {showLeaderboard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-6 h-6 text-amber-400" />
+                <h3 className="text-lg font-black text-white">Knight's Tour Records</h3>
+              </div>
+              <button
+                onClick={() => setShowLeaderboard(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3">
+              {([
+                { size: 5, label: "5x5 Sprint", total: 25 },
+                { size: 6, label: "6x6 Challenge", total: 36 },
+                { size: 7, label: "7x7 Master", total: 49 },
+                { size: 8, label: "8x8 Grandmaster", total: 64 },
+              ] as const).map(({ size, label, total }) => {
+                const rec = records[size] || { completed: false, maxVisited: 0, bestTimeSec: null, completionsCount: 0 };
+                return (
+                  <div
+                    key={size}
+                    className="p-3.5 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-sm">{label}</span>
+                        {rec.completed ? (
+                          <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Completed ({rec.completionsCount}x)
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-400 border border-slate-600">
+                            In Progress
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Max Squares: <strong className="text-slate-200">{rec.maxVisited} / {total}</strong>
+                      </p>
+                    </div>
+
+                    <div className="text-right font-mono">
+                      <span className="text-[11px] block uppercase text-slate-400 font-bold">Fastest Clear</span>
+                      <span className="text-sm font-black text-amber-400">
+                        {rec.bestTimeSec !== null ? formatTimer(rec.bestTimeSec) : "--:--"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => setShowLeaderboard(false)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition-colors"
+              >
+                Close Records
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
-

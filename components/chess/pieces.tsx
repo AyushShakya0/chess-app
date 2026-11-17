@@ -1,4 +1,5 @@
 import React from "react";
+import type { PieceSetStyle } from "@/lib/stores/settings-store";
 
 export type PieceColor = "w" | "b";
 export type PieceType = "p" | "n" | "b" | "r" | "q" | "k";
@@ -8,16 +9,158 @@ interface PieceProps {
   color: PieceColor;
   className?: string;
   size?: number | string;
+  style?: PieceSetStyle;
 }
 
-export const ChessPiece: React.FC<PieceProps> = ({ type, color, className = "", size }) => {
+export const ChessPiece: React.FC<PieceProps> = ({
+  type,
+  color,
+  className = "",
+  size,
+  style = "classic",
+}) => {
   const isWhite = color === "w";
-  const fill = isWhite ? "#ffffff" : "#1a1a1a";
-  const stroke = isWhite ? "#1a1a1a" : "#e0e0e0";
+
+  // Color profiles per piece style
+  let fill = isWhite ? "#ffffff" : "#1a1a1a";
+  let stroke = isWhite ? "#1a1a1a" : "#e0e0e0";
+
+  if (style === "wood") {
+    fill = isWhite ? "#faedcd" : "#4a2810";
+    stroke = isWhite ? "#7f4f24" : "#d4a373";
+  } else if (style === "pixel") {
+    fill = isWhite ? "#f8fafc" : "#0f172a";
+    stroke = isWhite ? "#334155" : "#94a3b8";
+  } else if (style === "modern") {
+    fill = isWhite ? "#f1f5f9" : "#020617";
+    stroke = isWhite ? "#2563eb" : "#38bdf8";
+  }
 
   const sizeProps = size ? { width: size, height: size } : {};
   const baseClass = `w-[84%] h-[84%] max-w-full max-h-full select-none pointer-events-none drop-shadow-sm ${className}`;
 
+  // Pixel style: 8-bit arcade geometry
+  if (style === "pixel") {
+    switch (type) {
+      case "p":
+        return (
+          <svg viewBox="0 0 16 16" {...sizeProps} className={baseClass} style={{ shapeRendering: "crispEdges" }}>
+            <rect x="6" y="2" width="4" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="5" y="5" width="6" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="6" y="8" width="4" height="4" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="3" y="12" width="10" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+          </svg>
+        );
+      case "r":
+        return (
+          <svg viewBox="0 0 16 16" {...sizeProps} className={baseClass} style={{ shapeRendering: "crispEdges" }}>
+            <rect x="3" y="2" width="2" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="7" y="2" width="2" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="11" y="2" width="2" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="4" y="5" width="8" height="2" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="5" y="7" width="6" height="5" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="3" y="12" width="10" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+          </svg>
+        );
+      case "n":
+        return (
+          <svg viewBox="0 0 16 16" {...sizeProps} className={baseClass} style={{ shapeRendering: "crispEdges" }}>
+            <rect x="5" y="2" width="5" height="2" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="3" y="4" width="8" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="2" y="7" width="6" height="2" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="5" y="9" width="6" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="3" y="12" width="10" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="5" y="5" width="1" height="1" fill={stroke} />
+          </svg>
+        );
+      case "b":
+        return (
+          <svg viewBox="0 0 16 16" {...sizeProps} className={baseClass} style={{ shapeRendering: "crispEdges" }}>
+            <rect x="7" y="1" width="2" height="2" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="5" y="3" width="6" height="4" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="6" y="7" width="4" height="5" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="4" y="12" width="8" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <line x1="8" y1="4" x2="8" y2="7" stroke={stroke} strokeWidth="0.8" />
+          </svg>
+        );
+      case "q":
+        return (
+          <svg viewBox="0 0 16 16" {...sizeProps} className={baseClass} style={{ shapeRendering: "crispEdges" }}>
+            <rect x="2" y="2" width="2" height="2" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="7" y="1" width="2" height="2" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="12" y="2" width="2" height="2" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <polygon points="3,5 13,5 11,8 5,8" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="5" y="8" width="6" height="4" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="3" y="12" width="10" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+          </svg>
+        );
+      case "k":
+        return (
+          <svg viewBox="0 0 16 16" {...sizeProps} className={baseClass} style={{ shapeRendering: "crispEdges" }}>
+            <rect x="7" y="1" width="2" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="6" y="2" width="4" height="1" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="4" y="4" width="8" height="4" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="5" y="8" width="6" height="4" fill={fill} stroke={stroke} strokeWidth="0.5" />
+            <rect x="3" y="12" width="10" height="3" fill={fill} stroke={stroke} strokeWidth="0.5" />
+          </svg>
+        );
+    }
+  }
+
+  // Modernist Bauhaus Geometric style
+  if (style === "modern") {
+    switch (type) {
+      case "p":
+        return (
+          <svg viewBox="0 0 45 45" {...sizeProps} className={baseClass}>
+            <circle cx="22.5" cy="15" r="5" fill={fill} stroke={stroke} strokeWidth="2" />
+            <polygon points="17,38 28,38 25,23 20,23" fill={fill} stroke={stroke} strokeWidth="2" />
+          </svg>
+        );
+      case "r":
+        return (
+          <svg viewBox="0 0 45 45" {...sizeProps} className={baseClass}>
+            <rect x="15" y="13" width="15" height="25" rx="1" fill={fill} stroke={stroke} strokeWidth="2" />
+            <rect x="13" y="10" width="4" height="4" fill={fill} stroke={stroke} strokeWidth="1.5" />
+            <rect x="20.5" y="10" width="4" height="4" fill={fill} stroke={stroke} strokeWidth="1.5" />
+            <rect x="28" y="10" width="4" height="4" fill={fill} stroke={stroke} strokeWidth="1.5" />
+          </svg>
+        );
+      case "n":
+        return (
+          <svg viewBox="0 0 45 45" {...sizeProps} className={baseClass}>
+            <polygon points="14,38 31,38 31,22 25,12 18,12 14,20" fill={fill} stroke={stroke} strokeWidth="2" />
+            <circle cx="22" cy="17" r="1.5" fill={stroke} />
+          </svg>
+        );
+      case "b":
+        return (
+          <svg viewBox="0 0 45 45" {...sizeProps} className={baseClass}>
+            <polygon points="22.5,9 13,38 32,38" fill={fill} stroke={stroke} strokeWidth="2" />
+            <circle cx="22.5" cy="16" r="2.5" fill={stroke} />
+          </svg>
+        );
+      case "q":
+        return (
+          <svg viewBox="0 0 45 45" {...sizeProps} className={baseClass}>
+            <polygon points="22.5,10 13,38 32,38" fill={fill} stroke={stroke} strokeWidth="2" />
+            <circle cx="22.5" cy="7" r="2.5" fill={fill} stroke={stroke} strokeWidth="1.5" />
+            <circle cx="14" cy="12" r="2" fill={fill} stroke={stroke} strokeWidth="1.5" />
+            <circle cx="31" cy="12" r="2" fill={fill} stroke={stroke} strokeWidth="1.5" />
+          </svg>
+        );
+      case "k":
+        return (
+          <svg viewBox="0 0 45 45" {...sizeProps} className={baseClass}>
+            <rect x="14" y="16" width="17" height="22" rx="2" fill={fill} stroke={stroke} strokeWidth="2" />
+            <line x1="22.5" y1="8" x2="22.5" y2="15" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />
+            <line x1="19" y1="11" x2="26" y2="11" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+        );
+    }
+  }
+
+  // Classic & Wood Carved (Staunton Vector Engine)
   switch (type) {
     case "p":
       return (

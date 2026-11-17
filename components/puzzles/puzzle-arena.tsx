@@ -22,6 +22,13 @@ import {
 import confetti from "canvas-confetti";
 
 import { CURATED_PUZZLES, type TacticalPuzzle, getMoveCoordsFromSan } from "@/lib/data/puzzles";
+import {
+  calculatePuzzleEloChange,
+  getStoredPuzzleElo,
+  saveStoredPuzzleElo,
+} from "@/lib/chess/puzzle-rating";
+import { useAuth } from "@/lib/stores/auth-store";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
 
 export type PuzzleMode = "daily" | "rush" | "streak";
 export type RatingTier = "all" | "under-1000" | "1000-1400" | "1400-1800" | "1800+";
@@ -116,6 +123,22 @@ export const PuzzleArena: React.FC = () => {
   });
   const [streakEnded, setStreakEnded] = useState(false);
 
+  // Dynamic Tactical ELO Rating Engine
+  const [authState] = useAuth();
+  const [userRating, setUserRating] = useState<number>(() => getStoredPuzzleElo());
+  const [ratingDelta, setRatingDelta] = useState<number | null>(null);
+  const [usedHint, setUsedHint] = useState<boolean>(false);
+  const [puzzleStartTime, setPuzzleStartTime] = useState<number>(() => Date.now());
+  const [hasDeductedForCurrent, setHasDeductedForCurrent] = useState<boolean>(false);
+
+  // Sync with Supabase profile rating if available
+  useEffect(() => {
+    if (authState.profile?.elo_puzzles && authState.profile.elo_puzzles > 100) {
+      setUserRating(authState.profile.elo_puzzles);
+      saveStoredPuzzleElo(authState.profile.elo_puzzles);
+    }
+  }, [authState.profile?.elo_puzzles]);
+
   // Initialize or reset puzzle when index or puzzle changes
   useEffect(() => {
     setGame(new Chess(puzzle.fen));
@@ -124,6 +147,10 @@ export const PuzzleArena: React.FC = () => {
     setIsOpponentMoving(false);
     setShowHint(false);
     setLastMove(null);
+    setRatingDelta(null);
+    setUsedHint(false);
+    setHasDeductedForCurrent(false);
+    setPuzzleStartTime(Date.now());
     setFeedback(`Your turn as ${playerColor === "white" ? "White" : "Black"}. Find the winning continuation!`);
   }, [currentIdx, puzzle.fen, playerColor]);
 
@@ -193,7 +220,22 @@ export const PuzzleArena: React.FC = () => {
         setStatus("correct");
         sound.playVictory();
         confetti({ particleCount: 140, spread: 80, origin: { y: 0.6 } });
-        setFeedback("🎉 Tactical Masterpiece! Puzzle Solved!");
+
+        // Calculate and apply ELO change
+        const timeTaken = Math.max(1, Math.round((Date.now() - puzzleStartTime) / 1000));
+        const ratingResult = calculatePuzzleEloChange(userRating, puzzle.rating, !usedHint, timeTaken);
+        setUserRating(ratingResult.newRating);
+        saveStoredPuzzleElo(ratingResult.newRating);
+        setRatingDelta(ratingResult.delta);
+
+        setFeedback(`🎉 Tactical Masterpiece! Puzzle Solved! (+${ratingResult.delta} ELO)`);
+
+        if (authState.user && isSupabaseConfigured()) {
+          void supabase
+            .from("profiles")
+            .update({ elo_puzzles: ratingResult.newRating })
+            .eq("id", authState.user.id);
+        }
 
         if (mode === "rush") {
           setRushScore((s) => s + 1);
@@ -248,6 +290,21 @@ export const PuzzleArena: React.FC = () => {
       // Return false so board.tsx immediately undos the move!
       sound.playDefeat();
       setStatus("retry");
+
+      if (!hasDeductedForCurrent) {
+        setHasDeductedForCurrent(true);
+        const ratingResult = calculatePuzzleEloChange(userRating, puzzle.rating, false);
+        setUserRating(ratingResult.newRating);
+        saveStoredPuzzleElo(ratingResult.newRating);
+        setRatingDelta(ratingResult.delta);
+
+        if (authState.user && isSupabaseConfigured()) {
+          void supabase
+            .from("profiles")
+            .update({ elo_puzzles: ratingResult.newRating })
+            .eq("id", authState.user.id);
+        }
+      }
 
       if (mode === "streak") {
         setStreakEnded(true);
@@ -328,8 +385,27 @@ export const PuzzleArena: React.FC = () => {
           </div>
         </div>
 
-        {/* Mode Selector */}
-        <div className="flex items-center gap-1.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-700">
+        {/* Dynamic Puzzle ELO Badge & Mode Selector */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 bg-slate-900/90 border border-amber-500/30 px-3.5 py-1.5 rounded-xl shadow-inner">
+            <Award className="w-4 h-4 text-amber-400" />
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[11px] uppercase font-bold text-slate-400">Puzzle ELO</span>
+              <span className="font-mono text-sm font-black text-amber-300">{userRating}</span>
+              {ratingDelta !== null && (
+                <span
+                  className={`text-xs font-black transition-all animate-bounce ${
+                    ratingDelta > 0 ? "text-emerald-400" : "text-rose-400"
+                  }`}
+                >
+                  {ratingDelta > 0 ? `+${ratingDelta}` : ratingDelta}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Mode Selector */}
+          <div className="flex items-center gap-1.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-700">
           <button
             onClick={() => {
               setMode("daily");
@@ -364,6 +440,7 @@ export const PuzzleArena: React.FC = () => {
           </button>
         </div>
       </div>
+    </div>
 
       {/* Filter Toolbar (Visible in Daily Practice Mode) */}
       {mode === "daily" && (
@@ -612,7 +689,10 @@ export const PuzzleArena: React.FC = () => {
                   </div>
                 ) : (
                   <button
-                    onClick={() => setShowHint(true)}
+                    onClick={() => {
+                      setShowHint(true);
+                      setUsedHint(true);
+                    }}
                     className="w-full py-2 bg-slate-900 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-semibold border border-slate-700 flex items-center justify-center gap-1.5 transition-colors"
                   >
                     <Lightbulb className="w-3.5 h-3.5 text-amber-400" />

@@ -175,7 +175,12 @@
 18. [x] Supabase Auth & Schema: corrected RLS holes on `profiles` and `games`, trigger on `auth.users`, added `game_moves` table, indexes on foreign keys, and `useAuth` session store with Auth modal.
 19. [x] VIP entitlement: server-side redemption endpoint (`/api/vip/redeem`) with IP rate limiting, Postgres `redeem_vip_promo` RPC, and client hints removed.
 
-**Milestone D: Planned features from §2**, after A–C: multi-premove queue, more themes and piece sets, Lichess puzzle import + puzzle rating, Knight's Tour leaderboard, spectators, optional Stockfish.
+**Milestone D: Planned Features — ✅ COMPLETED**
+
+20. [x] Multi-Premove Queue: up to 3 sequential premoves with virtual legal dot calculation on opponent turns, dashed translucent arrows, numbered square badges, right-click cancellation, and automatic turn-change execution (`lib/chess/premove-queue.ts`, `components/chess/board.tsx`, `tests/premove.test.ts`).
+21. [x] Expanded Themes & Piece Sets: added `emerald`, `obsidian`, and `tournament` board themes alongside `classic`, `wood`, `glass`, and `neon`. Added pure SVG piece sets for `classic` (vector Staunton), `wood` (carved organic), `pixel` (8-bit retro arcade), and `modern` (Bauhaus geometric) with live King preview in settings (`lib/stores/settings-store.ts`, `components/chess/pieces.tsx`, `components/chess/settings-modal.tsx`).
+22. [x] Dynamic Puzzle Rating Engine: FIDE-style ELO formula with speed bonus (<= 15s) and clamping (+5 to +35, -5 to -35), persistent local storage fallback, Supabase profile synchronization, and live animated ELO delta badge in `/puzzles` (`lib/chess/puzzle-rating.ts`, `components/puzzles/puzzle-arena.tsx`, `tests/puzzle-rating.test.ts`).
+23. [x] Knight's Tour Leaderboard & Records: persistent tracking of max visited squares, best completion times, and total clears across all board sizes (5x5 Sprint, 6x6 Challenge, 7x7 Master, 8x8 Grandmaster) with interactive records modal and stats bar integration (`lib/chess/knights-tour-records.ts`, `components/chess/knights-tour.tsx`, `tests/knights-tour.test.ts`).
 
 ---
 

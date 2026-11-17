@@ -3,11 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { sound } from "../audio/sound.ts";
 
-export type BoardTheme = "classic" | "wood" | "glass" | "neon";
+export type BoardTheme = "classic" | "wood" | "glass" | "neon" | "obsidian" | "tournament" | "emerald";
+export type PieceSetStyle = "classic" | "wood" | "pixel" | "modern";
 export type EvalBarMode = "live" | "every-5" | "disabled";
 
 export interface ChessSettings {
   theme: BoardTheme;
+  pieceSet: PieceSetStyle;
   soundEnabled: boolean;
   volume: number; // 0.0 - 1.0
   autoQueen: boolean;
@@ -17,6 +19,7 @@ export interface ChessSettings {
 
 const DEFAULT_SETTINGS: ChessSettings = {
   theme: "classic",
+  pieceSet: "classic",
   soundEnabled: true,
   volume: 0.6,
   autoQueen: true,

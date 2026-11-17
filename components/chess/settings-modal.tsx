@@ -3,8 +3,9 @@
 import React from "react";
 import { BoardTheme } from "./board";
 import { EvalBarMode } from "./evaluation-bar";
-import { X, Sliders, Palette, Activity, Cpu, Check, Volume2, VolumeX, Eye } from "lucide-react";
-import { useSettings } from "@/lib/stores/settings-store";
+import { ChessPiece } from "./pieces";
+import { X, Sliders, Palette, Activity, Cpu, Check, Volume2, VolumeX, Eye, Sparkles } from "lucide-react";
+import { useSettings, type PieceSetStyle } from "@/lib/stores/settings-store";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -28,6 +29,13 @@ const THEME_OPTIONS: { id: BoardTheme; name: string; desc: string; lightBg: stri
     darkBg: "bg-[#739552]",
   },
   {
+    id: "emerald",
+    name: "Emerald Pro",
+    desc: "Chess.com emerald green & light ivory",
+    lightBg: "bg-[#eeeed2]",
+    darkBg: "bg-[#769656]",
+  },
+  {
     id: "wood",
     name: "Walnut Wood",
     desc: "Rich mahogany & golden birch hardwood",
@@ -47,6 +55,43 @@ const THEME_OPTIONS: { id: BoardTheme; name: string; desc: string; lightBg: stri
     desc: "Vibrant synthwave cyan & electric purple glow",
     lightBg: "bg-cyan-900/50",
     darkBg: "bg-indigo-950/80",
+  },
+  {
+    id: "obsidian",
+    name: "Midnight Obsidian",
+    desc: "Pitch dark OLED slate & graphite shadows",
+    lightBg: "bg-slate-700/70",
+    darkBg: "bg-slate-950",
+  },
+  {
+    id: "tournament",
+    name: "Tournament Blue",
+    desc: "Championship navy blue & warm buff contrast",
+    lightBg: "bg-[#eae9d2]",
+    darkBg: "bg-[#4b7399]",
+  },
+];
+
+const PIECE_SET_OPTIONS: { id: PieceSetStyle; name: string; desc: string }[] = [
+  {
+    id: "classic",
+    name: "Staunton Vector",
+    desc: "Official tournament standard vector silhouettes",
+  },
+  {
+    id: "wood",
+    name: "Carved Wood",
+    desc: "Warm organic mahogany and maple wood carving",
+  },
+  {
+    id: "pixel",
+    name: "8-Bit Arcade",
+    desc: "Retro arcade pixel art geometry",
+  },
+  {
+    id: "modern",
+    name: "Bauhaus Modern",
+    desc: "Sleek geometric minimalist silhouettes",
   },
 ];
 
@@ -223,6 +268,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </div>
                       {isSelected && (
                         <span className="w-5 h-5 rounded-full bg-blue-500 text-white flex items-center justify-center">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-bold text-white leading-snug">{opt.name}</span>
+                    <span className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">{opt.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Section: Piece Set Style */}
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                Piece Set Style
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2.5">
+              {PIECE_SET_OPTIONS.map((opt) => {
+                const isSelected = (globalSettings.pieceSet || "classic") === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => updateGlobalSettings({ pieceSet: opt.id })}
+                    className={`flex flex-col text-left p-3 rounded-2xl border transition-all ${
+                      isSelected
+                        ? "bg-amber-600/20 border-amber-500 shadow-md ring-2 ring-amber-500/40"
+                        : "bg-slate-800/60 border-slate-700/80 hover:bg-slate-800"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="w-8 h-8 rounded-lg bg-slate-950 flex items-center justify-center p-1 border border-slate-700">
+                        <ChessPiece type="k" color="w" size={24} style={opt.id} />
+                      </div>
+                      {isSelected && (
+                        <span className="w-5 h-5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center font-black">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </span>
                       )}

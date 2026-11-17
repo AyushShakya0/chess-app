@@ -4,9 +4,15 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Chess, Square, Move } from "chess.js";
 import { ChessPiece, PieceType, PieceColor } from "./pieces";
 import { sound } from "@/lib/audio/sound";
-import { useSettings } from "@/lib/stores/settings-store";
+import { useSettings, type BoardTheme, type PieceSetStyle } from "@/lib/stores/settings-store";
+import {
+  QueuedPremove,
+  enqueuePremove,
+  clearPremoveQueue,
+  getPremoveLegalMoves,
+} from "@/lib/chess/premove-queue";
 
-export type BoardTheme = "classic" | "wood" | "glass" | "neon";
+export type { BoardTheme };
 
 export interface BoardArrow {
   from: Square;
@@ -17,12 +23,6 @@ export interface BoardArrow {
 export interface BoardHighlight {
   square: Square;
   color: string;
-}
-
-interface QueuedPremove {
-  from: Square;
-  to: Square;
-  promotion?: string;
 }
 
 interface PointerDragState {
@@ -45,6 +45,7 @@ interface ChessboardProps {
   showLegalMoves?: boolean;
   showCoordinates?: boolean;
   theme?: BoardTheme;
+  pieceSet?: PieceSetStyle;
   isCheck?: boolean;
   lastMove?: { from: Square; to: Square } | null;
   customArrows?: BoardArrow[];
@@ -67,6 +68,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   showLegalMoves = true,
   showCoordinates: propShowCoordinates,
   theme = "classic",
+  pieceSet: propPieceSet,
   isCheck = false,
   lastMove = null,
   customArrows,
@@ -77,13 +79,14 @@ export const Chessboard: React.FC<ChessboardProps> = ({
 }) => {
   const [globalSettings] = useSettings();
   const showCoordinates = typeof propShowCoordinates === "boolean" ? propShowCoordinates : globalSettings.showCoordinates;
+  const activePieceSet = propPieceSet || globalSettings.pieceSet || "classic";
 
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
   const [legalMoves, setLegalMoves] = useState<Square[]>([]);
   const [draggedSquare, setDraggedSquare] = useState<Square | null>(null);
   const [pointerDrag, setPointerDrag] = useState<PointerDragState | null>(null);
   const [focusedSquare, setFocusedSquare] = useState<Square>(orientation === "black" ? "e7" : "e2");
-  const [premove, setPremove] = useState<QueuedPremove | null>(null);
+  const [premoveQueue, setPremoveQueue] = useState<QueuedPremove[]>([]);
   const [arrows, setArrows] = useState<BoardArrow[]>([]);
   const [highlights, setHighlights] = useState<BoardHighlight[]>([]);
   const [rightDragStart, setRightDragStart] = useState<Square | null>(null);
@@ -113,6 +116,12 @@ export const Chessboard: React.FC<ChessboardProps> = ({
         return isLight ? "bg-[#334155]" : "bg-[#1e293b]";
       case "neon":
         return isLight ? "bg-[#1e1b4b]" : "bg-[#311042]";
+      case "emerald":
+        return isLight ? "bg-[#eeeed2]" : "bg-[#769656]";
+      case "obsidian":
+        return isLight ? "bg-[#334155]" : "bg-[#0f172a]";
+      case "tournament":
+        return isLight ? "bg-[#eae9d2]" : "bg-[#4b7399]";
       case "classic":
       default:
         return isLight ? "bg-[#ebecd0]" : "bg-[#739552]";
@@ -213,33 +222,46 @@ export const Chessboard: React.FC<ChessboardProps> = ({
       } catch {
         return false;
       }
-    } else if (premoveEnabled && !allowedColor) {
-      // Queue Premove
-      const isPawn = piece.type === "p";
-      const isPromotionRank = (piece.color === "w" && to[1] === "8") || (piece.color === "b" && to[1] === "1");
-      setPremove({ from, to, promotion: isPawn && isPromotionRank ? (promotionChoice || "q") : undefined });
-      sound.playPremove();
-      setSelectedSquare(null);
-      setLegalMoves([]);
-      return true;
+    } else if (premoveEnabled) {
+      const playerSide = allowedColor || (orientation === "white" ? "w" : "b");
+      if (piece.color === playerSide) {
+        // Queue Premove
+        const isPawn = piece.type === "p";
+        const isPromotionRank = (piece.color === "w" && to[1] === "8") || (piece.color === "b" && to[1] === "1");
+        const nextMove: QueuedPremove = {
+          from,
+          to,
+          promotion: isPawn && isPromotionRank ? (promotionChoice || "q") : undefined,
+        };
+        setPremoveQueue((prev) => enqueuePremove(prev, nextMove));
+        sound.playPremove();
+        setSelectedSquare(null);
+        setLegalMoves([]);
+        return true;
+      }
     }
 
     return false;
-  }, [game, allowedColor, customMoveHandler, autoPromoteToQueen, onMove, premoveEnabled]);
+  }, [game, allowedColor, customMoveHandler, autoPromoteToQueen, onMove, premoveEnabled, orientation]);
 
   // Attempt to execute queued premove on turn change
   useEffect(() => {
-    if (premove && interactive) {
-      const isPlayerTurn = (orientation === "white" && game.turn() === "w") || (orientation === "black" && game.turn() === "b");
+    if (premoveQueue.length > 0 && interactive) {
+      const isPlayerTurn =
+        (orientation === "white" && game.turn() === "w") ||
+        (orientation === "black" && game.turn() === "b");
       if (isPlayerTurn) {
-        const success = attemptMove(premove.from, premove.to, premove.promotion);
-        setPremove(null);
-        if (!success) {
+        const [head, ...rest] = premoveQueue;
+        const success = attemptMove(head.from, head.to, head.promotion);
+        if (success) {
+          setPremoveQueue(rest);
+        } else {
+          setPremoveQueue([]);
           sound.playMove(); // Missed premove
         }
       }
     }
-  }, [game, premove, interactive, orientation, attemptMove]);
+  }, [game, premoveQueue, interactive, orientation, attemptMove]);
 
   // Click on square
   const handleSquareClick = (sq: Square) => {
@@ -264,12 +286,19 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     // Select piece
     const piece = game.get(sq);
     if (piece) {
-      if (allowedColor && piece.color !== allowedColor) return;
+      const playerSide = allowedColor || (orientation === "white" ? "w" : "b");
       const isTurn = (piece.color === "w" && game.turn() === "w") || (piece.color === "b" && game.turn() === "b");
-      if (isTurn || (premoveEnabled && !allowedColor)) {
+      const isPlayerPiece = piece.color === playerSide;
+
+      if (isTurn) {
         setSelectedSquare(sq);
         const moves = game.moves({ square: sq, verbose: true }) as Move[];
         setLegalMoves(moves.map((m) => m.to as Square));
+        return;
+      } else if (premoveEnabled && isPlayerPiece) {
+        setSelectedSquare(sq);
+        const premoveDots = getPremoveLegalMoves(game.fen(), premoveQueue, sq, piece.color);
+        setLegalMoves(premoveDots);
         return;
       }
     }
@@ -328,8 +357,11 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     const piece = game.get(square);
     if (!piece) return;
 
+    const playerSide = allowedColor || (orientation === "white" ? "w" : "b");
+    const isPlayerPiece = piece.color === playerSide;
     const isTurn = (piece.color === "w" && game.turn() === "w") || (piece.color === "b" && game.turn() === "b");
-    if (!isTurn && (!premoveEnabled || allowedColor)) return;
+
+    if (!isTurn && (!premoveEnabled || !isPlayerPiece)) return;
     if (allowedColor && piece.color !== allowedColor) return;
 
     setPointerDrag({
@@ -343,8 +375,13 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     });
 
     setSelectedSquare(square);
-    const moves = game.moves({ square, verbose: true }) as Move[];
-    setLegalMoves(moves.map((m) => m.to as Square));
+    if (isTurn) {
+      const moves = game.moves({ square, verbose: true }) as Move[];
+      setLegalMoves(moves.map((m) => m.to as Square));
+    } else {
+      const premoveDots = getPremoveLegalMoves(game.fen(), premoveQueue, square, piece.color);
+      setLegalMoves(premoveDots);
+    }
   };
 
   const handleBoardPointerMove = (e: React.PointerEvent) => {
@@ -385,15 +422,22 @@ export const Chessboard: React.FC<ChessboardProps> = ({
     const piece = game.get(sq);
     if (!piece) return;
 
-    if (allowedColor && piece.color !== allowedColor) return;
-
+    const playerSide = allowedColor || (orientation === "white" ? "w" : "b");
+    const isPlayerPiece = piece.color === playerSide;
     const isCurrentTurn = (piece.color === "w" && game.turn() === "w") || (piece.color === "b" && game.turn() === "b");
-    if (!isCurrentTurn && (!premoveEnabled || allowedColor)) return;
+
+    if (!isCurrentTurn && (!premoveEnabled || !isPlayerPiece)) return;
+    if (allowedColor && piece.color !== allowedColor) return;
 
     setDraggedSquare(sq);
     setSelectedSquare(sq);
-    const moves = game.moves({ square: sq, verbose: true }) as Move[];
-    setLegalMoves(moves.map((m) => m.to as Square));
+    if (isCurrentTurn) {
+      const moves = game.moves({ square: sq, verbose: true }) as Move[];
+      setLegalMoves(moves.map((m) => m.to as Square));
+    } else {
+      const premoveDots = getPremoveLegalMoves(game.fen(), premoveQueue, sq, piece.color);
+      setLegalMoves(premoveDots);
+    }
 
     e.dataTransfer.setData("text/plain", sq);
     e.dataTransfer.effectAllowed = "move";
@@ -417,6 +461,11 @@ export const Chessboard: React.FC<ChessboardProps> = ({
   // Right-click annotations
   const handleMouseDown = (e: React.MouseEvent, sq: Square) => {
     if (e.button === 2) {
+      if (premoveQueue.length > 0) {
+        setPremoveQueue([]);
+        sound.playMove();
+        return;
+      }
       setRightDragStart(sq);
     }
   };
@@ -492,7 +541,8 @@ export const Chessboard: React.FC<ChessboardProps> = ({
             const isSelected = selectedSquare === square;
             const isLegalMove = legalMoves.includes(square);
             const isLastMove = lastMove && (lastMove.from === square || lastMove.to === square);
-            const isPremove = premove && (premove.from === square || premove.to === square);
+            const premoveIndex = premoveQueue.findIndex((pm) => pm.from === square || pm.to === square);
+            const isPremove = premoveIndex !== -1;
             const isKingCheck = kingCheckSquare === square;
             const highlight = allHighlights.find((h) => h.square === square);
             const isFocused = focusedSquare === square;
@@ -503,7 +553,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
 
             const squareAria = `${square}, ${pieceDescription}${isKingCheck ? ", in check" : ""}${
               isLegalMove ? ", legal move" : ""
-            }`;
+            }${isPremove ? `, queued premove ${premoveIndex + 1}` : ""}`;
 
             return (
               <div
@@ -535,9 +585,13 @@ export const Chessboard: React.FC<ChessboardProps> = ({
                   <div className="absolute inset-0 bg-red-600/70 animate-pulse ring-2 ring-red-500 pointer-events-none" />
                 )}
 
-                {/* Queued premove highlight */}
+                {/* Queued multi-premove highlight and badge */}
                 {isPremove && (
-                  <div className="absolute inset-0 bg-blue-500/40 ring-1 ring-blue-400 pointer-events-none" />
+                  <div className="absolute inset-0 bg-red-500/35 border-2 border-red-500/70 pointer-events-none flex items-start justify-end p-0.5 z-10">
+                    <span className="text-[9px] font-black leading-none bg-red-600 text-white rounded px-1 py-0.5 shadow-sm">
+                      {premoveIndex + 1}
+                    </span>
+                  </div>
                 )}
 
                 {/* Right click user painted highlight */}
@@ -566,7 +620,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
                     onDragStart={(e) => handleDragStart(e, square)}
                     className="w-full h-full flex items-center justify-center z-10 active:scale-105 transition-transform duration-75"
                   >
-                    <ChessPiece type={piece.type as PieceType} color={piece.color as PieceColor} size={64} />
+                    <ChessPiece type={piece.type as PieceType} color={piece.color as PieceColor} size={64} style={activePieceSet} />
                   </div>
                 )}
 
@@ -639,7 +693,39 @@ export const Chessboard: React.FC<ChessboardProps> = ({
             >
               <polygon points="0 0, 4 2, 0 4" fill="#3b82f6" opacity="0.85" />
             </marker>
+            <marker
+              id="arrowhead-premove"
+              markerWidth="4"
+              markerHeight="4"
+              refX="2"
+              refY="2"
+              orient="auto"
+            >
+              <polygon points="0 0, 4 2, 0 4" fill="#ef4444" opacity="0.9" />
+            </marker>
           </defs>
+
+          {/* Queued Premove Path Arrows */}
+          {premoveQueue.map((pm, idx) => {
+            const start = squareToCoords(pm.from);
+            const end = squareToCoords(pm.to);
+            const sqSize = 100 / 8;
+            return (
+              <line
+                key={`premove-${idx}`}
+                x1={`${(start.x + 0.5) * sqSize}%`}
+                y1={`${(start.y + 0.5) * sqSize}%`}
+                x2={`${(end.x + 0.5) * sqSize}%`}
+                y2={`${(end.y + 0.5) * sqSize}%`}
+                stroke="#ef4444"
+                strokeWidth="6"
+                strokeDasharray="6 3"
+                strokeLinecap="round"
+                opacity="0.85"
+                markerEnd="url(#arrowhead-premove)"
+              />
+            );
+          })}
 
           {allArrows.map((arr, idx) => {
             const start = squareToCoords(arr.from);
@@ -679,7 +765,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
             style={{ left: pointerDrag.currentX, top: pointerDrag.currentY }}
           >
             <div className="w-16 h-16 drop-shadow-2xl scale-110">
-              <ChessPiece type={pointerDrag.piece.type} color={pointerDrag.piece.color} size={64} />
+              <ChessPiece type={pointerDrag.piece.type} color={pointerDrag.piece.color} size={64} style={activePieceSet} />
             </div>
           </div>
         )}
@@ -706,7 +792,7 @@ export const Chessboard: React.FC<ChessboardProps> = ({
                     aria-label={`Promote to ${pType === "q" ? "Queen" : pType === "r" ? "Rook" : pType === "b" ? "Bishop" : "Knight"}`}
                     className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors border border-slate-600 focus:ring-2 focus:ring-blue-400"
                   >
-                    <ChessPiece type={pType} color={game.turn() === "w" ? "w" : "b"} size={44} />
+                    <ChessPiece type={pType} color={game.turn() === "w" ? "w" : "b"} size={44} style={activePieceSet} />
                   </button>
                 ))}
               </div>
