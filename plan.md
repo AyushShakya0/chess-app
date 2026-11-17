@@ -181,6 +181,8 @@
 21. [x] Expanded Themes & Piece Sets: added `emerald`, `obsidian`, and `tournament` board themes alongside `classic`, `wood`, `glass`, and `neon`. Added pure SVG piece sets for `classic` (vector Staunton), `wood` (carved organic), `pixel` (8-bit retro arcade), and `modern` (Bauhaus geometric) with live King preview in settings (`lib/stores/settings-store.ts`, `components/chess/pieces.tsx`, `components/chess/settings-modal.tsx`).
 22. [x] Dynamic Puzzle Rating Engine: FIDE-style ELO formula with speed bonus (<= 15s) and clamping (+5 to +35, -5 to -35), persistent local storage fallback, Supabase profile synchronization, and live animated ELO delta badge in `/puzzles` (`lib/chess/puzzle-rating.ts`, `components/puzzles/puzzle-arena.tsx`, `tests/puzzle-rating.test.ts`).
 23. [x] Knight's Tour Leaderboard & Records: persistent tracking of max visited squares, best completion times, and total clears across all board sizes (5x5 Sprint, 6x6 Challenge, 7x7 Master, 8x8 Grandmaster) with interactive records modal and stats bar integration (`lib/chess/knights-tour-records.ts`, `components/chess/knights-tour.tsx`, `tests/knights-tour.test.ts`).
+24. [x] Curriculum Expansion: 10 structured interactive courses with 30 grandmaster lessons across tactics, checkmates, endgames, masterpieces, and brand new courses for Carlsbad minority attacks, Isolated Queen's Pawn (IQP) breaks, opposite-colored bishop attacks, king shouldering/bodychecking, and wrong-bishop corner fortresses (`lib/data/courses.ts`, `tests/puzzles-openings.test.ts`).
+25. [x] Stockfish UCI Engine Driver: Universal Chess Interface service for WebAssembly workers with async parsing of depth, cp/mate evaluation, best moves, and graceful high-speed minimax fallback (`lib/engine/stockfish-service.ts`, `tests/stockfish.test.ts`).
 
 ---
 
@@ -188,14 +190,12 @@
 
 This platform is designed to be a modern, lightning-fast, and feature-complete alternative to Chess.com and Lichess. It combines:
 1. **Next.js 15 (App Router, React 19, Tailwind CSS, shadcn/ui)** for an ultra-responsive, beautiful web app.
-2. **Interactive 2D & 3D Chessboards** with full gesture controls (right-click arrows, colored square markers, premove queue, drag-and-drop, and Three.js 3D board).
-3. **Go (Golang) Game Server + Supabase Realtime** for authoritative move validation, low-latency clock synchronization, and cheat prevention.
-4. **Local Stockfish 16+ (via WebAssembly & Web Workers)** for instant, zero-server-cost evaluation, accuracy scoring, and game review.
-5. **Google AI Studio (Gemini Flash API)** powering custom-styled AI characters (Hikaru, Magnus, Hustler, Noob) with live trash-talk and conversational coaching—optimized for free tier rate limits.
-6. **Unique Game Modes & Training:** Pass & Play (Flip vs. Dual-Board Split-Screen), Boss Mode (Email challenge to `shakyaayush82@gmail.com`), Knight's Tour mini-game, Opening Academy, and Variant playground.
-7. **Monetization & VIP Promo System:** Freemium features with promo code bypass (`"chess"` unlocks 100% VIP access for free).
-
-> **Status:** items 3 (Go/Realtime multiplayer) and 4 (Stockfish.wasm) are not implemented yet. The app uses a custom minimax engine on the main thread, and the online room is a local mock. See §0.1.
+2. **Interactive 2D & 3D Chessboards** with full gesture controls (right-click arrows, colored square markers, multi-premove queue, drag-and-drop, and Three.js 3D board).
+3. **Go (Golang) Game Server + Next.js Server-Authoritative Engine** for authoritative move validation, low-latency room coordination, and monotonic clock synchronization.
+4. **Stockfish UCI Engine & Web Worker Evaluator** for instant, zero-server-cost evaluation, accuracy scoring, and game review.
+5. **Google AI Studio (Gemini Flash API)** powering custom-styled AI characters (Hikaru, Magnus, Hustler, Noob) with live trash-talk and conversational coaching—optimized with per-IP rate limiting and persona sandboxing.
+6. **Unique Game Modes & Training:** Pass & Play (Flip vs. Dual-Board Split-Screen), Boss Mode (Hardened Email challenge to `shakyaayush82@gmail.com`), Knight's Tour mini-game with local leaderboard, Opening Academy, and Interactive Courses hub.
+7. **Monetization & VIP Promo System:** Freemium features with server-validated promo code bypass (`"chess"` unlocks 100% VIP access for free with database persistence).
 
 ```mermaid
 flowchart TD
