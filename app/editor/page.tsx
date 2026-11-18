@@ -3,9 +3,9 @@ import { BoardEditor } from "@/components/chess/board-editor";
 import { ModeErrorBoundary } from "@/components/chess/mode-error-boundary";
 
 export const metadata = {
-  title: "Board & Position Editor - Prin Chess",
+  title: "Board & Position Editor - Sovereign Chess",
   description:
-    "Design custom chess positions, analyze tactical setups with Stockfish UCI, export FEN, and challenge AI grandmasters directly.",
+    "Design custom chess positions, analyze tactical setups with Stockfish UCI, export FEN, and challenge AI grandmasters directly. Sovereign Chess Platform.",
 };
 
 export default function EditorPage() {

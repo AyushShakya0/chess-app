@@ -16,7 +16,7 @@ export const DEFAULT_KNIGHTS_TOUR_RECORDS: KnightsTourRecordsMap = {
   8: { completed: false, maxVisited: 0, bestTimeSec: null, completionsCount: 0 },
 };
 
-export const KNIGHTS_TOUR_STORAGE_KEY = "prin_knights_tour_records";
+export const KNIGHTS_TOUR_STORAGE_KEY = "sovereign_knights_tour_records";
 
 export function loadKnightsTourRecords(): KnightsTourRecordsMap {
   if (typeof window !== "undefined") {

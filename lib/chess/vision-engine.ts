@@ -12,7 +12,7 @@ export interface VisionHighScore {
   totalPracticed: number;
 }
 
-const STORAGE_KEY = "prin_chess_vision_scores";
+const STORAGE_KEY = "sovereign_chess_vision_scores";
 
 export const ALL_SQUARES: Square[] = [];
 for (const file of FILES) {

@@ -43,7 +43,7 @@ export const CoursesHub: React.FC = () => {
   const [completedLessonIds, setCompletedLessonIds] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       try {
-        const saved = localStorage.getItem("prin_chess_completed_lessons");
+        const saved = localStorage.getItem("sovereign_chess_completed_lessons");
         if (saved) return JSON.parse(saved);
       } catch {}
     }
@@ -107,7 +107,7 @@ export const CoursesHub: React.FC = () => {
           const updated = [...completedLessonIds, activeLesson.id];
           setCompletedLessonIds(updated);
           try {
-            localStorage.setItem("prin_chess_completed_lessons", JSON.stringify(updated));
+            localStorage.setItem("sovereign_chess_completed_lessons", JSON.stringify(updated));
           } catch {}
         }
         return true;
@@ -147,7 +147,7 @@ export const CoursesHub: React.FC = () => {
                   const updated = [...completedLessonIds, activeLesson.id];
                   setCompletedLessonIds(updated);
                   try {
-                    localStorage.setItem("prin_chess_completed_lessons", JSON.stringify(updated));
+                    localStorage.setItem("sovereign_chess_completed_lessons", JSON.stringify(updated));
                   } catch {}
                 }
               }
@@ -221,7 +221,7 @@ export const CoursesHub: React.FC = () => {
           const updated = [...completedLessonIds, activeLesson.id];
           setCompletedLessonIds(updated);
           try {
-            localStorage.setItem("prin_chess_completed_lessons", JSON.stringify(updated));
+            localStorage.setItem("sovereign_chess_completed_lessons", JSON.stringify(updated));
           } catch {}
         }
       }

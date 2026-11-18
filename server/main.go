@@ -256,7 +256,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	enableCORS(&w)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"online","service":"princhess-go-game-server","version":"2.0.0"}`))
+	_, _ = w.Write([]byte(`{"status":"online","service":"sovereign-chess-go-game-server","version":"2.0.0"}`))
 }
 
 func main() {
@@ -290,7 +290,7 @@ func main() {
 	signal.Notify(stopChan, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("♟️ Prin Chess Go Realtime Game Server listening on port %s", port)
+		log.Printf("♟️ Sovereign Chess Go Realtime Game Server listening on port %s", port)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("Server error: %v", err)
 		}

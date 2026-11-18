@@ -27,7 +27,7 @@ const DEFAULT_SETTINGS: ChessSettings = {
   showCoordinates: true,
 };
 
-const STORAGE_KEY = "prin_chess_settings";
+const STORAGE_KEY = "sovereign_chess_settings";
 
 // In-memory store state
 let currentSettings: ChessSettings = { ...DEFAULT_SETTINGS };

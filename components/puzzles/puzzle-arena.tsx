@@ -115,7 +115,7 @@ export const PuzzleArena: React.FC = () => {
   const [bestStreak, setBestStreak] = useState(() => {
     if (typeof window !== "undefined") {
       try {
-        const saved = localStorage.getItem("prin_chess_best_streak");
+        const saved = localStorage.getItem("sovereign_chess_best_streak") || localStorage.getItem("prin_chess_best_streak");
         if (saved) return parseInt(saved, 10) || 0;
       } catch {}
     }
@@ -248,7 +248,7 @@ export const PuzzleArena: React.FC = () => {
           if (newStreak > bestStreak) {
             setBestStreak(newStreak);
             try {
-              localStorage.setItem("prin_chess_best_streak", String(newStreak));
+              localStorage.setItem("sovereign_chess_best_streak", String(newStreak));
             } catch {}
           }
           setTimeout(() => {

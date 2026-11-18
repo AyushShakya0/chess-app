@@ -19,6 +19,10 @@ import {
   Minimize2,
   X,
   Sliders,
+  Flag,
+  Scale,
+  Swords,
+  MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
 import confetti from "canvas-confetti";
@@ -27,6 +31,7 @@ import { SettingsModal } from "./settings-modal";
 import { GameReviewModal } from "./game-review-modal";
 import { useChessGame } from "@/lib/chess/use-chess-game";
 import { useSettings } from "@/lib/stores/settings-store";
+import { useAuth } from "@/lib/stores/auth-store";
 
 export interface BotPersona {
   id: string;
@@ -147,6 +152,7 @@ function getRandomLine(arr: string[]): string {
 export const AiBotsPlay: React.FC = () => {
   const [selectedBot, setSelectedBot] = useState<BotPersona>(BOT_CATALOG[2]); // Gotham default
   const [settings, updateSettings] = useSettings();
+  const [auth] = useAuth();
 
   const {
     game,
@@ -157,7 +163,7 @@ export const AiBotsPlay: React.FC = () => {
     setLastMove,
     syncState,
   } = useChessGame({
-    persistenceKey: "prin_chess_active_game_bots",
+    persistenceKey: "sovereign_chess_active_game_bots",
     enableSounds: true,
   });
 
@@ -243,8 +249,8 @@ export const AiBotsPlay: React.FC = () => {
 
   const formatFullPgn = useCallback(() => {
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
-    let header = `[Event "Prin Chess Bot Match"]\n`;
-    header += `[Site "Prin Chess Platform"]\n`;
+    let header = `[Event "Sovereign Chess Bot Match"]\n`;
+    header += `[Site "Sovereign Chess Platform"]\n`;
     header += `[Date "${dateStr}"]\n`;
     header += `[White "Player"]\n`;
     header += `[Black "${selectedBot.name} (${selectedBot.elo})"]\n`;
@@ -271,7 +277,7 @@ export const AiBotsPlay: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `prin-chess-vs-${selectedBot.id}-${Date.now()}.pgn`;
+    link.download = `sovereign-chess-vs-${selectedBot.id}-${Date.now()}.pgn`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -475,42 +481,71 @@ export const AiBotsPlay: React.FC = () => {
     triggerBotMove(game);
   };
 
+  const handleResign = () => {
+    if (gameOver) return;
+    setGameOver(`${selectedBot.name} won by resignation!`);
+    sound.playDefeat();
+  };
+
+  const handleOfferDraw = () => {
+    if (gameOver) return;
+    if (Math.abs(evalScore) <= 1.5) {
+      setGameOver("Draw agreed by mutual consent!");
+      sound.playMove();
+    } else {
+      const line = "I have a strong position, I decline your draw offer!";
+      setLastBotRemark(line);
+      setChatLog((prev) => [...prev, { sender: "bot", text: line }]);
+    }
+  };
+
+  const playerName = auth.profile?.username || auth.user?.email?.split("@")[0] || "AyushShakya";
+  const playerInitials = playerName.slice(0, 2).toUpperCase();
+
   return (
     <div className={`flex flex-col items-center justify-start ${isZenMode ? "max-w-3xl" : "max-w-7xl"} mx-auto w-full transition-all`}>
       {/* Arena Grid */}
       <div className={`w-full ${isZenMode ? "flex flex-col items-center justify-center" : "grid grid-cols-1 lg:grid-cols-12 gap-6 items-start"}`}>
-        {/* Left: Chessboard & Active Opponent Header */}
+        {/* Left / Center: Chessboard & Opponent/Player Bars */}
         <div className={`${isZenMode ? "w-full flex flex-col items-center" : "lg:col-span-7 xl:col-span-8 flex flex-col items-center w-full"}`}>
-          {/* Active Bot Bar */}
-          <div className="flex items-center justify-between w-full max-w-[620px] mb-2 px-1">
+          
+          {/* Top Opponent Bar */}
+          <div className="flex items-center justify-between w-full max-w-[560px] mb-2 px-3 py-2 bg-[#14171f] border border-[#252a36] rounded-2xl shadow-md">
             <div className="flex items-center gap-2.5">
-              <span className="text-2xl p-1 bg-slate-800 rounded-lg border border-slate-700">{selectedBot.avatar}</span>
+              <span className="text-2xl p-1 bg-[#1c202a] rounded-xl border border-[#2c3240] flex items-center justify-center w-9 h-9">
+                {selectedBot.avatar}
+              </span>
               <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm sm:text-base font-bold text-white leading-tight">{selectedBot.name}</span>
-                  <span className="text-[11px] font-mono px-1.5 py-0.2 bg-slate-800 text-emerald-400 border border-slate-700 rounded">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-white font-display leading-tight">{selectedBot.name}</span>
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-[#1c202a] text-[#d4a359] border border-[#d4a359]/30 rounded-md">
                     {selectedBot.elo} ELO
                   </span>
                 </div>
-                <span className="text-xs text-slate-400 block -mt-0.5">{selectedBot.title}</span>
+                <span className="text-[11px] text-slate-400 block -mt-0.5 font-medium">{selectedBot.title}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
               {isThinking && (
-                <div className="flex items-center gap-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2.5 py-1 rounded-full text-xs font-semibold animate-pulse">
-                  <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                <div className="flex items-center gap-1.5 bg-[#d4a359]/15 text-[#f0cf85] border border-[#d4a359]/30 px-2.5 py-1 rounded-full text-xs font-semibold animate-pulse">
+                  <div className="w-1.5 h-1.5 rounded-full bg-[#d4a359] animate-ping" />
                   Calculating...
                 </div>
               )}
+
+              {/* Opponent Clock (10:00 match format) */}
+              <div className="px-2.5 py-1 bg-[#0d0f12] border border-[#252a36] rounded-xl text-xs font-mono font-bold text-slate-200">
+                10:00
+              </div>
 
               {/* Zen / Focus Mode Toggle */}
               <button
                 onClick={() => setIsZenMode((z) => !z)}
                 className={`p-1.5 rounded-xl border transition-colors ${
                   isZenMode
-                    ? "bg-amber-500/20 border-amber-500/40 text-amber-300"
-                    : "bg-slate-800 border-slate-700 text-slate-400 hover:text-white"
+                    ? "bg-[#d4a359]/20 border-[#d4a359]/50 text-[#f0cf85]"
+                    : "bg-[#1c202a] border-[#252a36] text-slate-400 hover:text-white"
                 }`}
                 title={isZenMode ? "Exit Zen Mode (Z)" : "Zen Focus Mode (Press Z)"}
               >
@@ -521,7 +556,7 @@ export const AiBotsPlay: React.FC = () => {
 
           {/* Mid-Game Bot Switch Toast Banner */}
           {switchedMidGame && (
-            <div className="w-full max-w-[620px] mb-2 bg-gradient-to-r from-purple-900/80 to-blue-900/80 border border-purple-500/60 text-purple-200 px-3.5 py-1.5 rounded-xl text-xs font-bold text-center shadow-lg animate-fade-in flex items-center justify-center gap-2">
+            <div className="w-full max-w-[560px] mb-2 bg-[#d4a359]/20 border border-[#d4a359]/40 text-[#f0cf85] px-3.5 py-1.5 rounded-xl text-xs font-bold text-center shadow-lg animate-fade-in flex items-center justify-center gap-2">
               <span>⚡</span>
               <span>
                 <strong>{switchedMidGame}</strong> took over the board! Position preserved.
@@ -537,34 +572,63 @@ export const AiBotsPlay: React.FC = () => {
                 isMate={isMate}
                 mateIn={mateIn}
                 orientation="white"
-                heightClass="h-[min(88vw,calc(100vh-210px))] sm:h-[min(80vw,calc(100vh-210px))] lg:h-[min(560px,calc(100vh-200px))] max-h-[560px]"
+                heightClass="h-[min(88vw,calc(100vh-250px))] sm:h-[min(80vw,calc(100vh-250px))] lg:h-[min(540px,calc(100vh-220px))] max-h-[540px]"
                 mode={settings.evalMode}
                 moveCount={game.history().length}
               />
             )}
 
-            <Chessboard
-              game={game}
-              orientation="white"
-              onMove={handlePlayerMove}
-              interactive={game.turn() === "w" && !isThinking && !gameOver}
-              autoPromoteToQueen={settings.autoQueen}
-              theme={settings.theme}
-              lastMove={lastMove}
-              boardSizeClass="w-[min(88vw,calc(100vh-210px))] h-[min(88vw,calc(100vh-210px))] sm:w-[min(80vw,calc(100vh-210px))] sm:h-[min(80vw,calc(100vh-210px))] lg:w-[min(560px,calc(100vh-200px))] lg:h-[min(560px,calc(100vh-200px))] max-w-[560px] max-h-[560px] aspect-square"
-            />
+            <div className="rounded-2xl p-1 bg-[#14171f] border border-[#252a36] shadow-2xl">
+              <Chessboard
+                game={game}
+                orientation="white"
+                onMove={handlePlayerMove}
+                interactive={game.turn() === "w" && !isThinking && !gameOver}
+                autoPromoteToQueen={settings.autoQueen}
+                theme={settings.theme}
+                lastMove={lastMove}
+                boardSizeClass="w-[min(88vw,calc(100vh-250px))] h-[min(88vw,calc(100vh-250px))] sm:w-[min(80vw,calc(100vh-250px))] sm:h-[min(80vw,calc(100vh-250px))] lg:w-[min(540px,calc(100vh-220px))] lg:h-[min(540px,calc(100vh-220px))] max-w-[540px] max-h-[540px] aspect-square rounded-xl overflow-hidden"
+              />
+            </div>
+          </div>
+
+          {/* Bottom Player Bar */}
+          <div className="flex items-center justify-between w-full max-w-[560px] mt-2 px-3 py-2 bg-[#14171f] border border-[#252a36] rounded-2xl shadow-md">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#d4a359] to-[#f0cf85] text-black flex items-center justify-center font-black text-xs font-display shadow-md">
+                {playerInitials}
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-white font-display leading-tight">{playerName}</span>
+                  <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-[#1c202a] text-emerald-400 border border-emerald-500/30 rounded-md">
+                    1642 ELO
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400 block -mt-0.5 font-medium">Sovereign Challenger</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 font-mono font-bold">
+                {game.turn() === "w" ? "Your Turn" : "Thinking..."}
+              </span>
+              <div className="px-2.5 py-1 bg-[#0d0f12] border border-[#252a36] rounded-xl text-xs font-mono font-bold text-[#f0cf85]">
+                10:00
+              </div>
+            </div>
           </div>
 
           {/* FEN & PGN Action Toolbar */}
-          <div className="flex flex-wrap items-center justify-between w-full max-w-[560px] mt-2.5 px-3 py-1.5 bg-slate-900/90 border border-slate-800 rounded-xl text-xs gap-2 shadow-inner">
-            <div className="flex items-center gap-1.5 truncate max-w-[200px] text-slate-400 font-mono text-[11px]">
-              <span className="text-slate-500 font-bold">FEN:</span>
+          <div className="flex flex-wrap items-center justify-between w-full max-w-[560px] mt-2 px-3 py-1.5 bg-[#14171f] border border-[#252a36] rounded-xl text-xs gap-2 shadow-inner">
+            <div className="flex items-center gap-1.5 truncate max-w-[190px] text-slate-400 font-mono text-[11px]">
+              <span className="text-[#d4a359] font-bold">FEN:</span>
               <span className="truncate">{game.fen()}</span>
             </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={handleCopyFen}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1c202a] hover:bg-[#252a36] text-slate-300 hover:text-white font-semibold text-[11px] border border-[#252a36] transition-colors"
                 title="Copy position FEN to clipboard"
               >
                 {copiedFen ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
@@ -572,7 +636,7 @@ export const AiBotsPlay: React.FC = () => {
               </button>
               <button
                 onClick={handleCopyPgn}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1c202a] hover:bg-[#252a36] text-slate-300 hover:text-white font-semibold text-[11px] border border-[#252a36] transition-colors"
                 title="Copy game PGN moves"
               >
                 {copiedPgn ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-slate-400" />}
@@ -580,7 +644,7 @@ export const AiBotsPlay: React.FC = () => {
               </button>
               <button
                 onClick={handleDownloadPgn}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-semibold text-[11px] border border-slate-700 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1c202a] hover:bg-[#252a36] text-slate-300 hover:text-white font-semibold text-[11px] border border-[#252a36] transition-colors"
                 title="Download .PGN game file"
               >
                 <Download className="w-3 h-3 text-slate-400" />
@@ -588,7 +652,7 @@ export const AiBotsPlay: React.FC = () => {
               </button>
               <button
                 onClick={() => setIsImportModalOpen(true)}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 text-blue-300 font-semibold text-[11px] border border-blue-500/40 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#d4a359]/15 hover:bg-[#d4a359]/25 text-[#f0cf85] font-semibold text-[11px] border border-[#d4a359]/30 transition-colors"
                 title="Load custom FEN or PGN"
               >
                 <Upload className="w-3 h-3" />
@@ -596,23 +660,22 @@ export const AiBotsPlay: React.FC = () => {
               </button>
               <Link
                 href={`/editor?fen=${encodeURIComponent(game.fen())}`}
-                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 font-semibold text-[11px] border border-purple-500/40 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1c202a] hover:bg-[#252a36] text-[#d4a359] font-semibold text-[11px] border border-[#d4a359]/30 transition-colors"
                 title="Edit this position in Board Editor"
               >
-                <Sliders className="w-3 h-3" />
+                <Sliders className="w-3 h-3 text-[#d4a359]" />
                 <span className="hidden sm:inline">Editor</span>
               </Link>
             </div>
           </div>
-
           {gameOver && (
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-              <div className="bg-yellow-500/20 text-yellow-300 border border-yellow-500/50 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-center">
+              <div className="bg-[#d4a359]/20 text-[#f0cf85] border border-[#d4a359]/50 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold text-center">
                 {gameOver}
               </div>
               <button
                 onClick={() => setIsReviewOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg transition-all"
+                className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#d4a359] to-[#e2b768] text-black rounded-xl text-xs font-black shadow-lg transition-all font-display"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 Review Game
@@ -621,16 +684,115 @@ export const AiBotsPlay: React.FC = () => {
           )}
         </div>
 
-        {/* Right: AI Opponents Selector, Live Banter & Chat */}
-        <div className={`${isZenMode ? "hidden" : "lg:col-span-5 xl:col-span-4 flex flex-col gap-3 w-full lg:max-h-[min(620px,calc(100vh-150px))] lg:overflow-y-auto pr-1"}`}>
-          {/* Choose AI Opponent Card */}
-          <div className="bg-slate-800/90 border border-slate-700 rounded-2xl p-3.5 shadow-xl">
-            <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Bot className="w-4 h-4 text-blue-400" />
-                Choose Opponent
+        {/* Right: Game Room Card (Scoresheet, Dialogue, Opponent Picker, Match Controls) */}
+        <div className={`${isZenMode ? "hidden" : "lg:col-span-5 xl:col-span-4 flex flex-col gap-3 w-full lg:max-h-[min(650px,calc(100vh-140px))] lg:overflow-y-auto pr-1"}`}>
+          
+          {/* Game Room Panel Header */}
+          <div className="bg-[#14171f] border border-[#252a36] rounded-2xl p-4 shadow-xl space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-[#252a36]">
+              <span className="text-xs font-bold font-display text-white uppercase tracking-wider flex items-center gap-2">
+                <Swords className="w-4 h-4 text-[#d4a359]" />
+                Game Room
               </span>
-              <span className="text-[10px] font-mono font-bold text-emerald-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#0d0f12] text-slate-400 border border-[#252a36]">
+                  Moves: {game.history().length}
+                </span>
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-[#1c202a] transition"
+                  title="Settings"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* In-game Match Actions: 1/2 Draw & Resign */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleOfferDraw}
+                disabled={Boolean(gameOver)}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#1c202a] hover:bg-[#252a36] border border-[#252a36] text-xs font-bold text-slate-300 hover:text-white transition-all disabled:opacity-50"
+              >
+                <Scale className="w-3.5 h-3.5 text-[#d4a359]" />
+                <span>½ Draw</span>
+              </button>
+              <button
+                onClick={handleResign}
+                disabled={Boolean(gameOver)}
+                className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-[#1c202a] hover:bg-rose-950/40 border border-[#252a36] hover:border-rose-500/40 text-xs font-bold text-slate-300 hover:text-rose-300 transition-all disabled:opacity-50"
+              >
+                <Flag className="w-3.5 h-3.5 text-rose-400" />
+                <span>Resign</span>
+              </button>
+            </div>
+
+            {/* Active Bot Dialogue Card */}
+            <div className="bg-[#0d0f12] border border-[#252a36] rounded-xl p-3 relative overflow-hidden">
+              <div className="flex items-center gap-2 mb-1.5 text-xs font-bold text-slate-400">
+                <span className="text-base">{selectedBot.avatar}</span>
+                <span className="font-display text-[#d4a359]">{selectedBot.name}</span>
+              </div>
+              <p className="text-xs font-medium text-slate-300 italic leading-relaxed min-h-[2.5rem]">
+                &ldquo;{lastBotRemark}&rdquo;
+              </p>
+            </div>
+
+            {/* Move History Scoresheet */}
+            <div className="bg-[#0d0f12] border border-[#252a36] rounded-xl p-2.5 flex flex-col">
+              <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-[#252a36] text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                <span>Move Scoresheet</span>
+                <span className="text-[#d4a359]">{game.isCheckmate() ? "Checkmate" : game.inCheck() ? "Check" : "In Progress"}</span>
+              </div>
+              <div className="overflow-y-auto max-h-[120px] font-mono text-xs space-y-1 pr-1 scrollbar-thin">
+                {gameHistory.length === 0 ? (
+                  <div className="text-slate-500 text-[11px] text-center py-4 italic">No moves played yet. White to move.</div>
+                ) : (
+                  Array.from({ length: Math.ceil(gameHistory.length / 2) }).map((_, idx) => {
+                    const whiteMove = gameHistory[idx * 2];
+                    const blackMove = gameHistory[idx * 2 + 1];
+                    return (
+                      <div key={idx} className="flex items-center justify-between px-2 py-0.5 rounded hover:bg-white/5 text-[11px]">
+                        <span className="text-slate-500 w-8">{idx + 1}.</span>
+                        <span className="text-[#f0cf85] font-bold w-16">{whiteMove}</span>
+                        <span className="text-slate-300 w-16">{blackMove || ""}</span>
+                        <span className="text-[9px] text-emerald-400 font-sans">Play</span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Match Restart CTA */}
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                onClick={resetGame}
+                className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[#d4a359] to-[#e2b768] hover:from-[#e2b768] hover:to-[#f0cf85] text-black py-2.5 rounded-xl text-xs sm:text-sm font-black shadow-lg shadow-[#d4a359]/20 transition-all font-display"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                New Match
+              </button>
+              <button
+                onClick={() => setIsReviewOpen(true)}
+                className="flex items-center justify-center gap-1.5 bg-[#1c202a] hover:bg-[#252a36] text-white px-3.5 py-2.5 rounded-xl text-xs font-bold border border-[#252a36] transition-all"
+                title="Review Game Analysis"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#d4a359]" />
+                Review
+              </button>
+            </div>
+          </div>
+
+          {/* Choose AI Opponent Card */}
+          <div className="bg-[#14171f] border border-[#252a36] rounded-2xl p-3.5 shadow-xl">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5 font-display">
+                <Bot className="w-4 h-4 text-[#d4a359]" />
+                Select Persona
+              </span>
+              <span className="text-[10px] font-mono font-bold text-[#d4a359] bg-[#0d0f12] px-2 py-0.5 rounded border border-[#252a36]">
                 {selectedBot.name}
               </span>
             </div>
@@ -644,13 +806,13 @@ export const AiBotsPlay: React.FC = () => {
                     onClick={() => handleSelectBot(b)}
                     className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${
                       isSelected
-                        ? "bg-blue-600 border-blue-500 text-white shadow-md scale-102"
-                        : "bg-slate-900/90 border-slate-750 text-slate-300 hover:bg-slate-800"
+                        ? "bg-[#d4a359] border-[#d4a359] text-black shadow-md shadow-[#d4a359]/20 font-black scale-102"
+                        : "bg-[#0d0f12] border-[#252a36] text-slate-300 hover:bg-[#1c202a]"
                     }`}
                   >
                     <span className="text-xl mb-1">{b.avatar}</span>
                     <span className="text-[10px] font-bold truncate w-full text-center">{b.name.split(" ")[0]}</span>
-                    <span className={`text-[9px] font-mono font-semibold ${isSelected ? "text-blue-100" : "text-slate-400"}`}>
+                    <span className={`text-[9px] font-mono font-semibold ${isSelected ? "text-black" : "text-[#d4a359]"}`}>
                       {b.elo}
                     </span>
                   </button>
@@ -659,61 +821,26 @@ export const AiBotsPlay: React.FC = () => {
             </div>
           </div>
 
-          {/* Active Bot Dialogue Bubble */}
-          <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 shadow-xl relative overflow-hidden">
-            <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-400 uppercase tracking-wider">
-              <span className="text-sm">{selectedBot.avatar}</span>
-              <span>{selectedBot.name}&apos;s Trash Talk</span>
+          {/* Chat / Banter Log Drawer */}
+          <div className="bg-[#14171f] border border-[#252a36] rounded-2xl p-3 flex flex-col shadow-inner">
+            <div className="flex items-center gap-2 mb-2 px-1">
+              <MessageSquare className="w-3.5 h-3.5 text-[#d4a359]" />
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider font-display">Banter Transcript</span>
             </div>
-            <p className="text-sm font-medium text-slate-200 italic leading-relaxed min-h-[3rem]">
-              &ldquo;{lastBotRemark}&rdquo;
-            </p>
-          </div>
-
-          {/* Chat / Banter Log */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 flex-1 flex flex-col shadow-inner">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Game Chat Log</span>
-            <div className="flex-1 overflow-y-auto space-y-2 max-h-[140px] pr-1 scrollbar-thin">
+            <div className="overflow-y-auto space-y-1.5 max-h-[110px] pr-1 scrollbar-thin">
               {chatLog.map((c, idx) => (
                 <div
                   key={idx}
-                  className={`text-xs p-2.5 rounded-xl leading-relaxed ${
+                  className={`text-xs p-2 rounded-xl leading-relaxed ${
                     c.sender === "bot"
-                      ? "bg-slate-800/80 text-slate-200 border border-slate-700/60"
-                      : "bg-blue-600/30 text-blue-200 border border-blue-500/40 ml-4"
+                      ? "bg-[#0d0f12] text-slate-200 border border-[#252a36]"
+                      : "bg-[#d4a359]/20 text-[#f0cf85] border border-[#d4a359]/40 ml-4"
                   }`}
                 >
                   {c.text}
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={resetGame}
-              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-2 rounded-xl text-xs sm:text-sm font-bold shadow-lg transition-all"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              New Game
-            </button>
-            <button
-              onClick={() => setIsReviewOpen(true)}
-              className="flex items-center justify-center gap-1.5 bg-indigo-600/80 hover:bg-indigo-600 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border border-indigo-500 shadow-md transition-all"
-              title="Review Game Analysis"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              Review
-            </button>
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold border border-slate-700 shadow-md transition-all"
-              title="Open Board & Engine Settings"
-            >
-              <Settings className="w-3.5 h-3.5 text-blue-400" />
-              Settings
-            </button>
           </div>
         </div>
       </div>
@@ -746,16 +873,16 @@ export const AiBotsPlay: React.FC = () => {
 
       {/* Floating Zen Mode Indicator */}
       {isZenMode && (
-        <div className="fixed bottom-6 z-40 flex items-center gap-3 bg-slate-900/95 border border-slate-700 px-5 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md animate-fade-in">
+        <div className="fixed bottom-6 z-40 flex items-center gap-3 bg-[#14171f]/95 border border-[#252a36] px-5 py-2.5 rounded-2xl shadow-2xl backdrop-blur-md animate-fade-in">
           <div className="flex items-center gap-2">
-            <Maximize2 className="w-4 h-4 text-amber-400" />
+            <Maximize2 className="w-4 h-4 text-[#d4a359]" />
             <span className="text-xs font-mono font-bold text-slate-200">
-              Zen Mode Active <span className="text-slate-400 font-normal">(Press Z to toggle)</span>
+              Zen Focus Mode <span className="text-slate-400 font-normal">(Press Z to exit)</span>
             </span>
           </div>
           <button
             onClick={() => setIsZenMode(false)}
-            className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition-colors shadow-sm"
+            className="px-3 py-1 bg-[#d4a359] hover:bg-[#e2b768] text-black rounded-lg text-xs font-bold transition-colors shadow-sm font-display"
           >
             Exit Zen
           </button>
@@ -764,16 +891,16 @@ export const AiBotsPlay: React.FC = () => {
 
       {/* Load Custom FEN or PGN Modal */}
       {isImportModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Upload className="w-4 h-4 text-blue-400" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-[#14171f] border border-[#252a36] rounded-3xl max-w-lg w-full p-6 shadow-2xl relative">
+            <div className="flex items-center justify-between pb-3 border-b border-[#252a36]">
+              <h3 className="text-base font-bold text-white flex items-center gap-2 font-display">
+                <Upload className="w-4 h-4 text-[#d4a359]" />
                 Load FEN or PGN Position
               </h3>
               <button
                 onClick={() => setIsImportModalOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-[#1c202a] transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -783,23 +910,23 @@ export const AiBotsPlay: React.FC = () => {
                 value={importInput}
                 onChange={(e) => setImportInput(e.target.value)}
                 placeholder="Paste FEN (e.g. rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1) or PGN notation..."
-                className="w-full h-32 p-3 bg-slate-950 border border-slate-700 rounded-xl text-xs font-mono text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                className="w-full h-32 p-3 bg-[#0d0f12] border border-[#252a36] rounded-xl text-xs font-mono text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#d4a359] resize-none"
               />
               {importError && <p className="text-xs text-rose-400 font-bold">{importError}</p>}
             </div>
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#252a36]">
               <button
                 onClick={() => {
                   setIsImportModalOpen(false);
                   setImportError(null);
                 }}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold"
+                className="px-4 py-2 bg-[#1c202a] hover:bg-[#252a36] text-slate-300 rounded-xl text-xs font-bold"
               >
                 Cancel
               </button>
               <button
                 onClick={handleImportSubmit}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow-md"
+                className="px-4 py-2 bg-gradient-to-r from-[#d4a359] to-[#e2b768] text-black font-black rounded-xl text-xs shadow-md font-display"
               >
                 Load Position
               </button>

@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            from: "Prin Chess Boss Arena <onboarding@resend.dev>",
+            from: "Sovereign Chess Boss Arena <onboarding@resend.dev>",
             to: targetEmail,
             subject: `⚔️ BOSS CHALLENGE: ${rawName} (${challengerElo} ELO) has challenged you!`,
             html: `

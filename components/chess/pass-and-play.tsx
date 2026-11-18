@@ -71,7 +71,7 @@ export const PassAndPlay: React.FC = () => {
     lastMove,
     setLastMove,
   } = useChessGame({
-    persistenceKey: "prin_chess_active_game_pass",
+    persistenceKey: "sovereign_chess_active_game_pass",
     enableSounds: true,
   });
 

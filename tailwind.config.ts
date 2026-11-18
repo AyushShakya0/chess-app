@@ -12,6 +12,19 @@ const config: Config = {
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
+        sovereign: {
+          canvas: "#0d0f12",
+          card: "#14171f",
+          cardHover: "#181d27",
+          elevated: "#1c202a",
+          border: "#252a36",
+          borderLight: "rgba(255, 255, 255, 0.08)",
+          gold: "#d4a359",
+          goldHover: "#e2b768",
+          goldLight: "#f0cf85",
+          goldDark: "#9c6d42",
+          goldMuted: "rgba(212, 163, 89, 0.15)",
+        },
         slate: {
           750: "#223147",
           850: "#161f30",
@@ -31,7 +44,10 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: ["var(--font-sans)", "Inter", "system-ui", "sans-serif"],
+        sans: ["var(--font-jakarta)", "Inter", "system-ui", "sans-serif"],
+        display: ["var(--font-outfit)", "var(--font-jakarta)", "sans-serif"],
+        hero: ["var(--font-cinzel)", "serif"],
+        mono: ["var(--font-mono)", "JetBrains Mono", "monospace"],
       },
     },
   },
@@ -39,4 +55,3 @@ const config: Config = {
 };
 
 export default config;
-

@@ -1,4 +1,4 @@
-# ♟️ Prin Chess - Grandmaster Chess Platform
+# ♟️ Sovereign Chess - Grandmaster Chess Platform
 
 > A lightning-fast, feature-packed modern chess web application with AI celebrity banter, 3D interactive boards, dual-screen pass & play, live game review, and high-concurrency multiplayer.
 

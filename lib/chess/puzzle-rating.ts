@@ -10,7 +10,7 @@ export interface PuzzleRatingResult {
   expectedScore: number;
 }
 
-const STORAGE_KEY = "prin_chess_puzzle_elo";
+const STORAGE_KEY = "sovereign_chess_puzzle_elo";
 const DEFAULT_ELO = 1200;
 
 /**

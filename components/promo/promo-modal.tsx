@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Sparkles, Check, Crown, X, KeyRound } from "lucide-react";
 import confetti from "canvas-confetti";
 import { sound } from "@/lib/audio/sound";
@@ -44,7 +44,7 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUn
           localStorage.setItem("chess_vip_unlocked", "true");
         }
         setIsVip(true);
-        setSuccess(data.message || "🎉 Code Accepted! You have unlocked VIP Lifetime Access!");
+        setSuccess(data.message || "🎉 Code Accepted! You have unlocked Sovereign VIP Lifetime Access!");
         sound.playVictory();
         confetti({ particleCount: 160, spread: 80, origin: { y: 0.5 } });
         if (onVipUnlocked) onVipUnlocked();
@@ -74,62 +74,62 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUn
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden p-6 sm:p-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+      <div className="relative w-full max-w-lg bg-[#14171f] border border-[#252a36] rounded-3xl shadow-2xl overflow-hidden p-6 sm:p-8">
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-xl hover:bg-[#1c202a] transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Modal Header */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-400">
+        <div className="flex items-center gap-3 mb-5">
+          <div className="p-3 bg-[#d4a359]/15 border border-[#d4a359]/30 rounded-2xl text-[#d4a359] shadow-inner">
             <Crown className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-xl sm:text-2xl font-black text-white">Grandmaster VIP Pass</h2>
-            <p className="text-xs sm:text-sm text-slate-400">Unlock every premium feature across the platform</p>
+            <h2 className="text-xl sm:text-2xl font-black text-white font-display">Sovereign VIP Pass</h2>
+            <p className="text-xs sm:text-sm text-slate-400">Unlock every grandmaster feature across the platform</p>
           </div>
         </div>
 
         {/* VIP Perks */}
-        <div className="bg-slate-800/60 border border-slate-700/60 rounded-xl p-4 mb-6 space-y-2.5">
+        <div className="bg-[#0d0f12] border border-[#252a36] rounded-2xl p-4 mb-6 space-y-2.5">
           <div className="flex items-center gap-2.5 text-xs sm:text-sm text-slate-200">
-            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <Check className="w-4 h-4 text-[#d4a359] shrink-0" />
             <span>Unlimited Daily Tactical Puzzles & Puzzle Rush</span>
           </div>
           <div className="flex items-center gap-2.5 text-xs sm:text-sm text-slate-200">
-            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <Check className="w-4 h-4 text-[#d4a359] shrink-0" />
             <span>Full Stockfish Deep Engine Analysis & Move Accuracy</span>
           </div>
           <div className="flex items-center gap-2.5 text-xs sm:text-sm text-slate-200">
-            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Celebrity AI Bots (Hikaru, Magnus, Hustler) with Gemini Trash-Talk</span>
+            <Check className="w-4 h-4 text-[#d4a359] shrink-0" />
+            <span>Celebrity AI Personas (Hikaru, Magnus, Hustler) with Trash-Talk</span>
           </div>
           <div className="flex items-center gap-2.5 text-xs sm:text-sm text-slate-200">
-            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <Check className="w-4 h-4 text-[#d4a359] shrink-0" />
             <span>Full Opening Explorer & 3D Interactive Board Mode</span>
           </div>
         </div>
 
         {/* VIP Status or Redeem Input */}
         {isVip ? (
-          <div className="bg-emerald-500/20 border border-emerald-500/60 rounded-xl p-4 text-center">
-            <div className="inline-flex items-center gap-2 text-emerald-400 font-bold text-base mb-1">
-              <Sparkles className="w-5 h-5" />
-              VIP Status Active
+          <div className="bg-[#d4a359]/15 border border-[#d4a359]/40 rounded-2xl p-4 text-center">
+            <div className="inline-flex items-center gap-2 text-[#f0cf85] font-bold text-base mb-1 font-display">
+              <Sparkles className="w-5 h-5 text-[#d4a359]" />
+              Sovereign VIP Active
             </div>
-            <p className="text-xs text-emerald-300">
-              You currently enjoy 100% full unlocked access to all puzzles, bots, and analysis!
+            <p className="text-xs text-slate-300">
+              You currently enjoy 100% full unlocked access to all puzzles, bots, courses, and engine tools!
             </p>
           </div>
         ) : (
           <form onSubmit={handleRedeem} className="space-y-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2 font-display">
                 Have a Promo Code?
               </label>
               <div className="relative">
@@ -138,19 +138,19 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUn
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="Enter promo code (e.g. chess)"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 pl-10 text-white font-mono text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full bg-[#0d0f12] border border-[#252a36] rounded-xl px-4 py-3 pl-10 text-white font-mono text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#d4a359]"
                 />
                 <KeyRound className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
               </div>
             </div>
 
-            {error && <p className="text-xs text-red-400 font-medium">{error}</p>}
+            {error && <p className="text-xs text-rose-400 font-medium">{error}</p>}
             {success && <p className="text-xs text-emerald-400 font-medium">{success}</p>}
 
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-slate-950 font-black rounded-xl shadow-lg transition-all transform active:scale-98 text-sm disabled:opacity-60"
+              className="w-full py-3 bg-gradient-to-r from-[#d4a359] to-[#e2b768] hover:from-[#e2b768] hover:to-[#f0cf85] text-black font-black rounded-xl shadow-lg shadow-[#d4a359]/20 transition-all font-display text-sm disabled:opacity-60"
             >
               {isSubmitting ? "Verifying Code..." : "Redeem Code & Unlock VIP"}
             </button>
@@ -160,4 +160,3 @@ export const PromoModal: React.FC<PromoModalProps> = ({ isOpen, onClose, onVipUn
     </div>
   );
 };
-
