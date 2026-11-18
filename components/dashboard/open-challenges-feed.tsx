@@ -35,6 +35,7 @@ export const OpenChallengesFeed: React.FC = () => {
   const [newColor, setNewColor] = useState<"white" | "black" | "random">("random");
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [broadcastSuccess, setBroadcastSuccess] = useState(false);
+  const [myChallengeId, setMyChallengeId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = subscribeToChallenges((items) => {
@@ -42,6 +43,15 @@ export const OpenChallengesFeed: React.FC = () => {
     });
     return () => unsubscribe();
   }, []);
+
+  // When my open challenge is claimed by an opponent, automatically redirect to the room
+  useEffect(() => {
+    if (!myChallengeId) return;
+    const myChal = challenges.find((c) => c.id === myChallengeId);
+    if (myChal && myChal.status === "claimed" && myChal.roomId) {
+      router.push(`/play/${myChal.roomId}`);
+    }
+  }, [challenges, myChallengeId, router]);
 
   const handleAccept = async (challenge: OpenChallenge) => {
     setAcceptingId(challenge.id);
@@ -64,7 +74,7 @@ export const OpenChallengesFeed: React.FC = () => {
         auth.profile?.username || auth.user?.email?.split("@")[0] || "AyushShakya";
       const creatorElo = auth.profile?.elo_blitz || 1642;
 
-      await broadcastOpenChallenge({
+      const created = await broadcastOpenChallenge({
         creatorName,
         creatorElo,
         timeControl: newTc,
@@ -72,6 +82,7 @@ export const OpenChallengesFeed: React.FC = () => {
         rated: true,
       });
 
+      setMyChallengeId(created.id);
       setBroadcastSuccess(true);
       setTimeout(() => {
         setBroadcastSuccess(false);
@@ -108,6 +119,23 @@ export const OpenChallengesFeed: React.FC = () => {
           <span>Challenge</span>
         </button>
       </div>
+
+      {/* Live My Challenge Pending Banner */}
+      {myChallengeId && (
+        <div className="p-3 bg-[#d4a359]/10 border border-[#d4a359]/40 rounded-xl flex items-center justify-between text-xs animate-pulse">
+          <div className="flex items-center gap-2 text-[#f0cf85]">
+            <Radio className="w-4 h-4 text-[#d4a359]" />
+            <span className="font-bold">Your challenge is live!</span>
+            <span className="text-slate-400">Waiting for an opponent to accept...</span>
+          </div>
+          <button
+            onClick={() => setMyChallengeId(null)}
+            className="text-[10px] text-slate-400 hover:text-white underline font-bold"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Challenges List */}
       {challenges.length === 0 ? (

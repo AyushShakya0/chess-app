@@ -116,6 +116,10 @@ export async function claimOpenChallenge(
     throw new Error(roomData.error || "Failed to create match room for challenge");
   }
 
+  if (typeof window !== "undefined" && roomData.playerToken) {
+    sessionStorage.setItem(`room_token_${roomData.roomId}`, roomData.playerToken);
+  }
+
   // Update challenge status
   if (challenge) {
     challenge.status = "claimed";
