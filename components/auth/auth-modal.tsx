@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { X, User, Lock, Mail, AlertCircle, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/stores/auth-store";
 import { SovereignKnightIcon } from "@/components/brand/sovereign-logo";
+import { signInWithGoogle } from "@/lib/appwrite/auth";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -20,6 +21,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setLoading(true);
+    const res = await signInWithGoogle();
+    if (res.error) {
+      setError(res.error);
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -248,7 +259,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => alert("Google sign-in will be enabled with your OAuth credentials.")}
+                  onClick={handleGoogleSignIn}
                   aria-label="Sign in with Google"
                   className="py-2 px-3 rounded-xl bg-[#0d0f12] hover:bg-[#1c202a] border border-[#252a36] text-slate-300 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
                 >
