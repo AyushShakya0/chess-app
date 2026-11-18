@@ -72,6 +72,7 @@ interface SovereignLogoProps {
   tagline?: string;
   size?: "sm" | "md" | "lg";
   className?: string;
+  showText?: boolean;
 }
 
 export const SovereignLogo: React.FC<SovereignLogoProps> = ({
@@ -79,6 +80,7 @@ export const SovereignLogo: React.FC<SovereignLogoProps> = ({
   tagline = "Grandmaster Suite",
   size = "md",
   className = "",
+  showText = true,
 }) => {
   const iconSizes = {
     sm: "w-7 h-7",
@@ -97,17 +99,19 @@ export const SovereignLogo: React.FC<SovereignLogoProps> = ({
       <div className="relative flex items-center justify-center p-1 rounded-xl bg-gradient-to-br from-[#1c212c] to-[#0d0f14] border border-[#2c3240] group-hover:border-[#d4a359]/60 shadow-lg transition-all duration-300">
         <SovereignKnightIcon className={`${iconSizes[size]} transition-transform duration-300 group-hover:scale-105`} glow />
       </div>
-      <div>
-        <div className={`font-black font-display tracking-tight text-white flex items-center gap-1.5 ${titleSizes[size]}`}>
-          <span>SOVEREIGN</span>
-          <span className="gold-gradient-text">CHESS</span>
+      {showText && (
+        <div>
+          <div className={`font-black font-display tracking-tight text-white flex items-center gap-1.5 ${titleSizes[size]}`}>
+            <span>SOVEREIGN</span>
+            <span className="gold-gradient-text">CHESS</span>
+          </div>
+          {tagline && (
+            <span className="text-[10px] text-[#d4a359]/80 font-mono tracking-widest uppercase block -mt-1 font-bold">
+              {tagline}
+            </span>
+          )}
         </div>
-        {tagline && (
-          <span className="text-[10px] text-[#d4a359]/80 font-mono tracking-widest uppercase block -mt-1 font-bold">
-            {tagline}
-          </span>
-        )}
-      </div>
+      )}
     </div>
   );
 
