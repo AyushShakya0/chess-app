@@ -1,10 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, use } from "react";
+import { useRouter } from "next/navigation";
 import { Chess, type Square } from "chess.js";
-import { Chessboard, BoardTheme } from "@/components/chess/board";
+import { Chessboard } from "@/components/chess/board";
 import { sound } from "@/lib/audio/sound";
 import { useSettings } from "@/lib/stores/settings-store";
+import { AppShell } from "@/components/navigation/app-shell";
+import { VictoryModal } from "@/components/chess/victory-modal";
 import {
   Trophy,
   Copy,
@@ -18,10 +21,14 @@ import {
   RotateCcw,
   Clock,
   Eye,
+  Swords,
+  Maximize2,
+  ChevronRight,
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import Link from "next/link";
 import type { PublicRoomState } from "@/lib/server/room-manager";
+import { useAuth } from "@/lib/stores/auth-store";
 
 interface RoomPageProps {
   params: Promise<{ roomId: string }>;
@@ -35,8 +42,10 @@ function formatClockMs(ms: number): string {
 }
 
 export default function OnlineRoomPage({ params }: RoomPageProps) {
+  const router = useRouter();
   const { roomId } = use(params);
   const [settings] = useSettings();
+  const [auth] = useAuth();
 
   const [room, setRoom] = useState<PublicRoomState | null>(null);
   const [game, setGame] = useState<Chess>(new Chess());
@@ -48,6 +57,7 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
   const [inputMsg, setInputMsg] = useState("");
   const [isSubmittingMove, setIsSubmittingMove] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  const [isVictoryModalOpen, setIsVictoryModalOpen] = useState(false);
 
   // Clocks
   const [whiteDisplayMs, setWhiteDisplayMs] = useState(300000);
@@ -63,12 +73,14 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
     setWhiteDisplayMs(updatedRoom.whiteTimeLeftMs);
     setBlackDisplayMs(updatedRoom.blackTimeLeftMs);
 
+    if (updatedRoom.status === "completed") {
+      setIsVictoryModalOpen(true);
+    }
+
     try {
       const newGame = new Chess(updatedRoom.fen);
       setGame(newGame);
-    } catch {
-      // ignore fen parse fallback
-    }
+    } catch {}
 
     if (updatedRoom.lastMove) {
       setLastMove({ from: updatedRoom.lastMove.from, to: updatedRoom.lastMove.to });
@@ -90,7 +102,6 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
         });
 
         if (!res.ok) {
-          // If room doesn't exist, try getting info
           const getRes = await fetch(`/api/room/${roomId}`);
           if (!getRes.ok) throw new Error("Match room not found or expired.");
           const getData = await getRes.json();
@@ -103,13 +114,13 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
 
         const data = await res.json();
         if (active && data.room) {
-          if (data.playerToken) {
-            setPlayerToken(data.playerToken);
+          applyRoomState(data.room);
+          setPlayerRole(data.role);
+          setPlayerToken(data.playerToken);
+          setBoardOrientation(data.role === "black" ? "black" : "white");
+          if (typeof window !== "undefined") {
             sessionStorage.setItem(`room_token_${roomId}`, data.playerToken);
           }
-          setPlayerRole(data.role);
-          setBoardOrientation(data.role === "black" ? "black" : "white");
-          applyRoomState(data.room);
         }
       } catch (err: any) {
         if (active) setStatusError(err?.message || "Failed to join room");
@@ -118,114 +129,57 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
 
     joinRoom();
 
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/room/${roomId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (active && data.room) applyRoomState(data.room);
+        }
+      } catch {}
+    }, 1500);
+
     return () => {
       active = false;
+      clearInterval(interval);
     };
   }, [roomId, applyRoomState]);
 
-  // Realtime updates via Server-Sent Events (SSE) with polling fallback
+  // Clock tick countdown
   useEffect(() => {
-    let eventSource: EventSource | null = null;
-    let fallbackPoll: NodeJS.Timeout | null = null;
-
-    try {
-      eventSource = new EventSource(`/api/room/${roomId}/events`);
-
-      eventSource.addEventListener("state", (e) => {
-        try {
-          const updatedState = JSON.parse(e.data) as PublicRoomState;
-          applyRoomState(updatedState);
-        } catch {
-          // JSON parse ignore
-        }
-      });
-
-      eventSource.onerror = () => {
-        // SSE disconnected or errored, switch to polling fallback
-        eventSource?.close();
-        if (!fallbackPoll) {
-          fallbackPoll = setInterval(async () => {
-            try {
-              const res = await fetch(`/api/room/${roomId}`);
-              if (res.ok) {
-                const data = await res.json();
-                if (data.room) applyRoomState(data.room);
-              }
-            } catch {
-              // ignore
-            }
-          }, 2000);
-        }
-      };
-    } catch {
-      // EventSource not supported
-      fallbackPoll = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/room/${roomId}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.room) applyRoomState(data.room);
-          }
-        } catch {
-          // ignore
-        }
-      }, 2000);
-    }
-
-    return () => {
-      eventSource?.close();
-      if (fallbackPoll) clearInterval(fallbackPoll);
-    };
-  }, [roomId, applyRoomState]);
-
-  // Client Clock Interpolation
-  useEffect(() => {
-    if (!room || room.status !== "active" || !room.lastMoveTimestamp) return;
+    if (!room || room.status !== "active") return;
 
     const interval = setInterval(() => {
-      const now = Date.now();
-      const elapsed = now - room.lastMoveTimestamp!;
-
       if (room.turn === "w") {
-        setWhiteDisplayMs(Math.max(0, room.whiteTimeLeftMs - elapsed));
+        setWhiteDisplayMs((prev) => Math.max(0, prev - 200));
       } else {
-        setBlackDisplayMs(Math.max(0, room.blackTimeLeftMs - elapsed));
+        setBlackDisplayMs((prev) => Math.max(0, prev - 200));
       }
     }, 200);
 
     return () => clearInterval(interval);
   }, [room]);
 
-  // Handle Player Move
-  const submitMove = async (m: { from: Square; to: Square; promotion?: string }) => {
-    if (!room || room.status === "completed" || room.status === "aborted") return;
-    if (playerRole === "spectator") return;
-
-    const isMyTurn = (playerRole === "white" && room.turn === "w") || (playerRole === "black" && room.turn === "b");
-    if (!isMyTurn) return;
-
-    setIsSubmittingMove(true);
-    setStatusError(null);
+  const submitMove = async (move: { from: Square; to: Square; promotion?: string }) => {
+    if (!playerToken || isSubmittingMove) return;
 
     try {
+      setIsSubmittingMove(true);
+      setStatusError(null);
+
       const res = await fetch(`/api/room/${roomId}/move`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token: playerToken,
-          from: m.from,
-          to: m.to,
-          promotion: m.promotion || (settings.autoQueen ? "q" : undefined),
+          from: move.from,
+          to: move.to,
+          promotion: move.promotion || "q",
         }),
       });
 
       const data = await res.json();
-
-      if (!res.ok) {
-        setStatusError(data.error || "Illegal move rejected by server");
-        sound.playDefeat();
-        return;
-      }
+      if (!res.ok) throw new Error(data.error || "Move rejected by server");
 
       if (data.room) {
         applyRoomState(data.room);
@@ -271,9 +225,7 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
       });
       const data = await res.json();
       if (data.room) applyRoomState(data.room);
-    } catch {
-      // action error
-    }
+    } catch {}
   };
 
   const copyInviteLink = () => {
@@ -301,9 +253,7 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
           text,
         }),
       });
-    } catch {
-      // chat error
-    }
+    } catch {}
   };
 
   const isInteractive =
@@ -314,245 +264,288 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
     ((playerRole === "white" && room?.turn === "w") || (playerRole === "black" && room?.turn === "b")) &&
     !isSubmittingMove;
 
+  const opponentName =
+    boardOrientation === "white"
+      ? room?.black?.name || "Waiting for Opponent..."
+      : room?.white?.name || "Waiting for Opponent...";
+
+  const playerName =
+    boardOrientation === "white"
+      ? room?.white?.name || auth.profile?.username || "AyushShakya"
+      : room?.black?.name || auth.profile?.username || "AyushShakya";
+
+  const opponentClockMs = boardOrientation === "white" ? blackDisplayMs : whiteDisplayMs;
+  const playerClockMs = boardOrientation === "white" ? whiteDisplayMs : blackDisplayMs;
+  const isOpponentTurn = boardOrientation === "white" ? room?.turn === "b" : room?.turn === "w";
+  const isPlayerTurnActive = boardOrientation === "white" ? room?.turn === "w" : room?.turn === "b";
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
-      {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-950/85 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/online"
-            className="flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-white transition-colors bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Lobby
-          </Link>
-          <div className="flex items-center gap-2">
-            <span className="font-mono font-bold text-xs text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2.5 py-1 rounded-md">
-              Room: {roomId}
-            </span>
-            <span className="text-[11px] font-bold text-slate-400 bg-slate-900 border border-slate-800 px-2 py-1 rounded-md">
-              {room?.timeControl || "5+0"}
-            </span>
+    <AppShell>
+      <div className="space-y-4">
+        {/* Top Arena Header */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-[#14171f] border border-[#252a36] rounded-2xl px-5 py-3 shadow-lg">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/online"
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-300 hover:text-white bg-[#0d0f12] border border-[#252a36] px-3 py-1.5 rounded-xl transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Lobby</span>
+            </Link>
+
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-bold text-xs text-[#d4a359] bg-[#d4a359]/10 border border-[#d4a359]/30 px-2.5 py-1 rounded-lg">
+                Room: {roomId}
+              </span>
+              <span className="text-[11px] font-bold text-slate-400 bg-[#0d0f12] border border-[#252a36] px-2.5 py-1 rounded-lg">
+                {room?.timeControl || "10+0"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Server-Authoritative</span>
+            </div>
+
+            <button
+              onClick={copyInviteLink}
+              className="flex items-center gap-1.5 bg-[#d4a359] hover:bg-[#e2b768] text-black px-3.5 py-1.5 rounded-xl text-xs font-black shadow-md shadow-[#d4a359]/20 transition-all hover:scale-105"
+            >
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? "Copied!" : "Invite Link"}</span>
+            </button>
           </div>
         </div>
 
-        {/* Status & Share Link */}
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Authoritative</span>
-          </div>
-
-          <button
-            onClick={copyInviteLink}
-            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-md transition-all"
-          >
-            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            {copied ? "Link Copied!" : "Share Link"}
-          </button>
-        </div>
-      </header>
-
-      {/* Main Game Arena */}
-      <main className="flex-1 flex flex-col lg:flex-row items-center lg:items-start justify-center gap-8 p-4 sm:p-6 max-w-7xl mx-auto w-full">
-        {/* Left: Chessboard & Clocks */}
-        <div className="flex flex-col items-center">
-          {/* Top Clock (Opponent or Black) */}
-          <div className="flex items-center justify-between w-full max-w-[600px] mb-2 px-2">
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  boardOrientation === "white" ? "bg-indigo-400" : "bg-emerald-400"
-                }`}
-              />
-              <span className="text-xs font-bold text-slate-300">
-                {boardOrientation === "white"
-                  ? room?.black?.name || "Waiting for opponent..."
-                  : room?.white?.name || "Waiting for opponent..."}
-              </span>
-            </div>
-            <div
-              className={`font-mono text-sm sm:text-base font-black px-3 py-1 rounded-lg border flex items-center gap-1.5 ${
-                (boardOrientation === "white" ? room?.turn === "b" : room?.turn === "w") &&
-                room?.status === "active"
-                  ? "bg-amber-500/20 border-amber-500 text-amber-300 ring-2 ring-amber-500/30 animate-pulse"
-                  : "bg-slate-900 border-slate-800 text-slate-400"
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              {formatClockMs(boardOrientation === "white" ? blackDisplayMs : whiteDisplayMs)}
-            </div>
-          </div>
-
-          <Chessboard
-            game={game}
-            orientation={boardOrientation}
-            onMove={handleMove}
-            interactive={isInteractive}
-            theme={settings.theme}
-            lastMove={lastMove}
-          />
-
-          {/* Bottom Clock (You or White) */}
-          <div className="flex items-center justify-between w-full max-w-[600px] mt-2 px-2">
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  boardOrientation === "white" ? "bg-emerald-400" : "bg-indigo-400"
-                }`}
-              />
-              <span className="text-xs font-bold text-slate-300">
-                {boardOrientation === "white"
-                  ? `${room?.white?.name || "You"} ${playerRole === "white" ? "(You)" : ""}`
-                  : `${room?.black?.name || "You"} ${playerRole === "black" ? "(You)" : ""}`}
-              </span>
-            </div>
-            <div
-              className={`font-mono text-sm sm:text-base font-black px-3 py-1 rounded-lg border flex items-center gap-1.5 ${
-                (boardOrientation === "white" ? room?.turn === "w" : room?.turn === "b") &&
-                room?.status === "active"
-                  ? "bg-amber-500/20 border-amber-500 text-amber-300 ring-2 ring-amber-500/30 animate-pulse"
-                  : "bg-slate-900 border-slate-800 text-slate-400"
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5 text-slate-500" />
-              {formatClockMs(boardOrientation === "white" ? whiteDisplayMs : blackDisplayMs)}
-            </div>
-          </div>
-
-          {/* Error notice */}
-          {statusError && (
-            <div className="mt-3 bg-red-500/20 text-red-300 border border-red-500/50 px-4 py-1.5 rounded-xl text-xs font-bold">
-              {statusError}
-            </div>
-          )}
-
-          {/* Game Over Banner */}
-          {room?.status === "completed" && (
-            <div className="mt-4 bg-amber-500/20 border border-amber-500/50 p-4 rounded-2xl text-center max-w-[500px] w-full">
-              <div className="flex items-center justify-center gap-2 text-amber-300 font-black text-base mb-1">
-                <Trophy className="w-5 h-5" />
-                Game Over: {room.result}
+        {/* Main Chess Arena matching Reference Image */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Center Column: Opponent Bar, Chessboard, Player Bar */}
+          <div className="lg:col-span-8 flex flex-col items-center">
+            {/* Top Opponent Bar */}
+            <div className="w-full max-w-[620px] bg-[#14171f] border border-[#252a36] rounded-2xl px-4 py-2.5 mb-2 flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#1c202a] to-[#252a36] border border-[#2c3240] flex items-center justify-center font-black text-xs text-slate-200">
+                  {opponentName.slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white truncate max-w-[140px] sm:max-w-[200px]">
+                      {opponentName}
+                    </span>
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        isOpponentTurn && room?.status === "active" ? "bg-[#d4a359] animate-ping" : "bg-slate-500"
+                      }`}
+                    />
+                  </div>
+                  <span className="text-[10px] text-slate-400">
+                    {boardOrientation === "white" ? "Black" : "White"} &bull; Opponent
+                  </span>
+                </div>
               </div>
-              <p className="text-xs text-slate-300 mb-3">
-                {room.termination === "checkmate"
-                  ? `${room.winner === "white" ? "White" : "Black"} wins by checkmate!`
-                  : room.termination === "timeout"
-                  ? `${room.winner === "white" ? "White" : "Black"} wins on time!`
-                  : room.termination === "resignation"
-                  ? `${room.winner === "white" ? "White" : "Black"} wins by resignation!`
-                  : "Match ended in a draw."}
-              </p>
-              <Link
-                href="/online"
-                className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all"
+
+              {/* Opponent Clock */}
+              <div
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border font-mono font-black text-sm sm:text-base ${
+                  isOpponentTurn && room?.status === "active"
+                    ? "bg-[#d4a359] text-black border-[#d4a359] shadow-lg shadow-[#d4a359]/20"
+                    : "bg-[#0d0f12] text-slate-300 border-[#252a36]"
+                }`}
               >
-                Return to Lobby & Play Again
-              </Link>
+                <Clock className="w-3.5 h-3.5 opacity-80" />
+                <span>{formatClockMs(opponentClockMs)}</span>
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Right Sidebar: Chat, Controls & Perspective */}
-        <div className="flex flex-col gap-4 w-full max-w-sm">
-          {/* Action Buttons (Resign / Draw) */}
-          {playerRole !== "spectator" && room?.status === "active" && (
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3 flex gap-2">
-              <button
-                onClick={() => handleAction("resign")}
-                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl text-xs font-bold transition-all"
+            {/* Centered Chessboard */}
+            <div className="relative">
+              <Chessboard
+                game={game}
+                orientation={boardOrientation}
+                onMove={handleMove}
+                interactive={isInteractive}
+                theme={settings.theme}
+                pieceSet={settings.pieceSet}
+                lastMove={lastMove}
+              />
+            </div>
+
+            {/* Bottom Player Bar */}
+            <div className="w-full max-w-[620px] bg-[#14171f] border border-[#252a36] rounded-2xl px-4 py-2.5 mt-2 flex items-center justify-between shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#d4a359] to-[#f0cf85] text-black flex items-center justify-center font-black text-xs shadow-md shadow-[#d4a359]/20">
+                  {playerName.slice(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white truncate max-w-[140px] sm:max-w-[200px]">
+                      {playerName} {playerRole !== "spectator" ? "(You)" : ""}
+                    </span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                  </div>
+                  <span className="text-[10px] text-[#d4a359] font-semibold">
+                    1642 ELO &bull; {boardOrientation === "white" ? "White" : "Black"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Player Clock */}
+              <div
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border font-mono font-black text-sm sm:text-base ${
+                  isPlayerTurnActive && room?.status === "active"
+                    ? "bg-[#d4a359] text-black border-[#d4a359] shadow-lg shadow-[#d4a359]/20"
+                    : "bg-[#0d0f12] text-slate-300 border-[#252a36]"
+                }`}
               >
-                <Flag className="w-3.5 h-3.5" />
-                Resign
-              </button>
+                <Clock className="w-3.5 h-3.5 opacity-80" />
+                <span>{formatClockMs(playerClockMs)}</span>
+              </div>
+            </div>
 
-              {room.drawOfferFrom && room.drawOfferFrom !== (playerRole === "white" ? "w" : "b") ? (
+            {statusError && (
+              <div className="mt-3 bg-rose-500/10 text-rose-300 border border-rose-500/30 px-4 py-2 rounded-xl text-xs font-bold">
+                {statusError}
+              </div>
+            )}
+          </div>
+
+          {/* Right Game Room Panel matching Reference Image */}
+          <div className="lg:col-span-4 bg-[#14171f] border border-[#252a36] rounded-2xl p-5 shadow-xl flex flex-col justify-between min-h-[580px]">
+            {/* Header */}
+            <div>
+              <div className="flex items-center justify-between pb-3 border-b border-[#252a36] mb-4">
+                <h3 className="text-sm font-bold text-white font-display flex items-center gap-2">
+                  <Swords className="w-4 h-4 text-[#d4a359]" />
+                  <span>Game Room</span>
+                </h3>
+
+                <button
+                  onClick={() => setBoardOrientation((prev) => (prev === "white" ? "black" : "white"))}
+                  className="p-1.5 rounded-lg bg-[#0d0f12] hover:bg-[#1c202a] border border-[#252a36] text-slate-400 hover:text-white transition-colors"
+                  title="Flip board orientation"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Swords Good Luck Banner from Mockup */}
+              <div className="text-center py-6 border-b border-[#252a36]/60">
+                <div className="w-12 h-12 rounded-2xl bg-[#0d0f12] border border-[#252a36] flex items-center justify-center mx-auto mb-2 text-[#d4a359]">
+                  <Swords className="w-6 h-6" />
+                </div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-200">
+                  {room?.status === "active" ? "Good luck!" : room?.status === "completed" ? "Game Over" : "Matchmaking"}
+                </h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {room?.status === "active" ? "May the best mind prevail." : room?.result || "Standby"}
+                </p>
+              </div>
+
+              {/* Chat / Spectators Stream */}
+              <div className="py-3 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
+                  <span>Match Chat</span>
+                  <span className="text-[10px] text-slate-500">
+                    {room?.spectatorCount ? `${room.spectatorCount} Spectating` : "Live"}
+                  </span>
+                </div>
+
+                <div className="h-44 overflow-y-auto space-y-2 pr-1 custom-scrollbar bg-[#0d0f12] p-2.5 rounded-xl border border-[#252a36]">
+                  {chatMessages.length === 0 ? (
+                    <p className="text-[11px] text-slate-600 text-center py-8">Chat is quiet. Say hello!</p>
+                  ) : (
+                    chatMessages.map((msg, i) => (
+                      <div key={i} className="text-xs p-1.5 rounded-lg bg-[#14171f] border border-[#252a36]/60">
+                        <span className="font-bold text-[10px] text-[#d4a359] block">{msg.sender}</span>
+                        <span className="text-slate-300 text-[11px]">{msg.text}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <form onSubmit={handleSendChat} className="flex gap-2 pt-1">
+                  <input
+                    type="text"
+                    value={inputMsg}
+                    onChange={(e) => setInputMsg(e.target.value)}
+                    placeholder="Message opponent..."
+                    maxLength={150}
+                    className="flex-1 bg-[#0d0f12] border border-[#252a36] rounded-xl px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-[#d4a359]"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 bg-[#1c202a] hover:bg-[#252a36] text-white rounded-xl text-xs font-bold border border-[#252a36] transition-colors"
+                  >
+                    Send
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            {/* Bottom Action Buttons matching Reference Image (½ Draw & ⚐ Resign) */}
+            <div className="pt-4 border-t border-[#252a36] grid grid-cols-2 gap-2.5">
+              {room?.drawOfferFrom && room.drawOfferFrom !== (playerRole === "white" ? "w" : "b") ? (
                 <button
                   onClick={() => handleAction("accept_draw")}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold animate-pulse transition-all"
+                  className="py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-bold transition-all animate-pulse"
                 >
-                  <Handshake className="w-3.5 h-3.5" />
                   Accept Draw
                 </button>
               ) : (
                 <button
                   onClick={() => handleAction("offer_draw")}
-                  disabled={Boolean(room.drawOfferFrom)}
-                  className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+                  disabled={Boolean(room?.drawOfferFrom) || playerRole === "spectator" || room?.status !== "active"}
+                  className="py-2.5 bg-[#0d0f12] hover:bg-[#1c202a] text-slate-300 hover:text-white border border-[#252a36] rounded-xl text-xs font-bold transition-all disabled:opacity-40"
                 >
-                  <Handshake className="w-3.5 h-3.5" />
-                  {room.drawOfferFrom ? "Draw Offered" : "Offer Draw"}
+                  ½ Draw
                 </button>
               )}
-            </div>
-          )}
 
-          {/* Perspective & Role Card */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-3.5 flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <Eye className="w-4 h-4 text-blue-400" />
-              <span className="font-bold text-slate-300 capitalize">
-                Role: <span className="text-white">{playerRole}</span>
-              </span>
-            </div>
-            <button
-              onClick={() => setBoardOrientation((prev) => (prev === "white" ? "black" : "white"))}
-              className="flex items-center gap-1 px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-400 hover:text-white font-bold"
-            >
-              <RotateCcw className="w-3 h-3" />
-              Flip Board
-            </button>
-          </div>
-
-          {/* Chat Window */}
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col h-[380px] shadow-xl">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 pb-2 border-b border-slate-800">
-              <span className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
-                Live Chat
-              </span>
-              <span className="text-[10px] text-slate-500">
-                {room?.spectatorCount ? `${room.spectatorCount} Spectators` : ""}
-              </span>
-            </div>
-
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
-              {chatMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`p-2 rounded-lg text-xs ${
-                    msg.sender === "System"
-                      ? "bg-blue-500/10 text-blue-300 border border-blue-500/20 text-[11px]"
-                      : "bg-slate-800/80 text-slate-200"
-                  }`}
-                >
-                  <span className="font-bold text-[10px] text-blue-400 block mb-0.5">
-                    {msg.sender}
-                  </span>
-                  {msg.text}
-                </div>
-              ))}
-            </div>
-
-            <form onSubmit={handleSendChat} className="mt-3 flex gap-2">
-              <input
-                type="text"
-                value={inputMsg}
-                onChange={(e) => setInputMsg(e.target.value)}
-                placeholder="Send a chat message..."
-                maxLength={200}
-                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
               <button
-                type="submit"
-                className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-xl text-xs font-bold transition-colors"
+                onClick={() => handleAction("resign")}
+                disabled={playerRole === "spectator" || room?.status !== "active"}
+                className="py-2.5 bg-[#0d0f12] hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-[#252a36] hover:border-rose-900/40 rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
               >
-                Send
+                <Flag className="w-3.5 h-3.5" />
+                <span>Resign</span>
               </button>
-            </form>
+            </div>
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      {/* Victory / Game Over Modal matching Mockup */}
+      {(() => {
+        const isWin =
+          room?.status === "completed" &&
+          ((room.winner === "white" && playerRole === "white") ||
+            (room.winner === "black" && playerRole === "black"));
+        const isLoss =
+          room?.status === "completed" &&
+          playerRole !== "spectator" &&
+          ((room.winner === "white" && playerRole === "black") ||
+            (room.winner === "black" && playerRole === "white"));
+        const outcome = isWin ? "win" : isLoss ? "loss" : "draw";
+        const opponentName =
+          playerRole === "white"
+            ? room?.black?.name || "Black Opponent"
+            : room?.white?.name || "White Opponent";
+
+        return (
+          <VictoryModal
+            isOpen={isVictoryModalOpen}
+            outcome={outcome}
+            reason={room?.termination || room?.result || "Checkmate"}
+            opponentName={opponentName}
+            ratingChange={isWin ? "+14" : isLoss ? "-10" : "+2"}
+            onPlayAgain={() => router.push("/online")}
+            onBackToLobby={() => router.push("/online")}
+            onClose={() => setIsVictoryModalOpen(false)}
+          />
+        );
+      })()}
+    </AppShell>
   );
 }

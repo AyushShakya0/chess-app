@@ -1,39 +1,19 @@
 import { AppShell } from "@/components/navigation/app-shell";
+import { HeroBanner } from "@/components/dashboard/hero-banner";
 import { QuickPlayGrid } from "@/components/dashboard/quick-play-grid";
 import { OpenChallengesFeed } from "@/components/dashboard/open-challenges-feed";
 import { DailyPuzzleWidget } from "@/components/dashboard/daily-puzzle-widget";
 import { PlayerOverviewWidget } from "@/components/dashboard/player-overview-widget";
 import { RecentActivityStream } from "@/components/dashboard/recent-activity-stream";
 import Link from "next/link";
-import { Bot, Swords, Sparkles, Globe } from "lucide-react";
+import { Bot, Swords, Sparkles, Globe, Eye } from "lucide-react";
 
 export default function HomeDashboardPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        {/* Top Minimal Greeting Bar (Leaving top empty/clean as requested) */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white font-display tracking-tight flex items-center gap-2">
-              <span>Sovereign Dashboard</span>
-              <span className="text-[#d4a359] text-sm font-sans font-normal border border-[#d4a359]/30 bg-[#d4a359]/10 px-2 py-0.5 rounded-full">
-                Arena Live
-              </span>
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Authoritative matchmaking, live challenges, and tactical analytics.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 self-start sm:self-center text-xs">
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#14171f] border border-[#252a36] text-slate-300">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              <Globe className="w-3.5 h-3.5 text-emerald-400 ml-1" />
-              <span className="font-mono font-bold text-white">12,842</span>
-              <span className="text-slate-500">online</span>
-            </div>
-          </div>
-        </div>
+        {/* Sovereign Think. Move. Win. Hero Banner from Mockup */}
+        <HeroBanner />
 
         {/* 12-Column Responsive Dashboard Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -56,6 +36,33 @@ export default function HomeDashboardPage() {
 
             {/* Daily Tactical Puzzle Widget */}
             <DailyPuzzleWidget />
+
+            {/* Board Vision & Square Trainer Promotion Card */}
+            <div className="bg-[#14171f] border border-[#252a36] rounded-2xl p-5 shadow-xl space-y-3 relative overflow-hidden group">
+              <div className="flex items-center gap-2 text-[#d4a359]">
+                <Eye className="w-4 h-4" />
+                <span className="text-xs font-bold uppercase tracking-wider">
+                  Vision & Notation Trainer
+                </span>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-white font-display group-hover:text-[#d4a359] transition-colors">
+                  Learn Chessboard Square Names
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Train your mind to play through algebraic annotation without looking at the pieces.
+                </p>
+              </div>
+
+              <Link
+                href="/vision"
+                className="w-full py-2.5 bg-[#0d0f12] hover:bg-[#1c202a] text-white border border-[#252a36] text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all group-hover:border-[#d4a359]/40"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#d4a359]" />
+                <span>Train Square Vision</span>
+              </Link>
+            </div>
 
             {/* Play AI Bot Arena Promo Card */}
             <div className="bg-gradient-to-br from-[#14171f] to-[#0d0f12] border border-[#252a36] rounded-2xl p-5 shadow-xl space-y-3 relative overflow-hidden group">

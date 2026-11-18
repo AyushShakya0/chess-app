@@ -29,6 +29,7 @@ import confetti from "canvas-confetti";
 import { EvaluationBar } from "./evaluation-bar";
 import { SettingsModal } from "./settings-modal";
 import { GameReviewModal } from "./game-review-modal";
+import { VictoryModal } from "./victory-modal";
 import { useChessGame } from "@/lib/chess/use-chess-game";
 import { useSettings } from "@/lib/stores/settings-store";
 import { useAuth } from "@/lib/stores/auth-store";
@@ -176,6 +177,8 @@ export const AiBotsPlay: React.FC = () => {
   const [chatLog, setChatLog] = useState<{ sender: "bot" | "player"; text: string }[]>([]);
   const [lastBotRemark, setLastBotRemark] = useState<string>("");
   const [gameOver, setGameOver] = useState<string | null>(null);
+  const [isDismissedVictory, setIsDismissedVictory] = useState(false);
+  const isVictoryOpen = Boolean(gameOver) && !isDismissedVictory;
   const [switchedMidGame, setSwitchedMidGame] = useState<string | null>(null);
 
   // Zen / Focus Mode
@@ -336,6 +339,7 @@ export const AiBotsPlay: React.FC = () => {
     resetChessGame();
     setIsThinking(false);
     setGameOver(null);
+    setIsDismissedVictory(false);
     setLastMove(null);
     setSwitchedMidGame(null);
     setEvalScore(0);
@@ -934,6 +938,40 @@ export const AiBotsPlay: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Victory / Game Over Modal matching Sovereign Mockups */}
+      {(() => {
+        if (!gameOver) return null;
+        const lower = gameOver.toLowerCase();
+        const isWin = lower.includes("defeated") || lower.includes("you won");
+        const isDraw = lower.includes("draw");
+        const outcome = isWin ? "win" : isDraw ? "draw" : "loss";
+        const reason = lower.includes("checkmate")
+          ? "Checkmate!"
+          : lower.includes("resignation")
+          ? "By Resignation"
+          : lower.includes("repetition")
+          ? "Threefold Repetition"
+          : gameOver;
+
+        return (
+          <VictoryModal
+            isOpen={isVictoryOpen}
+            outcome={outcome}
+            reason={reason}
+            opponentName={selectedBot.name}
+            ratingChange={isWin ? "+16" : isDraw ? "+2" : "-12"}
+            onPlayAgain={() => {
+              resetGame();
+            }}
+            onBackToLobby={() => {
+              setIsDismissedVictory(true);
+              window.location.href = "/online";
+            }}
+            onClose={() => setIsDismissedVictory(true)}
+          />
+        );
+      })()}
     </div>
   );
 };
