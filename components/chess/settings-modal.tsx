@@ -93,12 +93,17 @@ const PIECE_SET_OPTIONS: { id: PieceSetStyle; name: string; desc: string }[] = [
   {
     id: "classic",
     name: "Staunton Vector",
-    desc: "Official tournament standard vector silhouettes",
+    desc: "Tournament standard vector silhouettes",
+  },
+  {
+    id: "gold",
+    name: "Sovereign Gold",
+    desc: "Imperial metallic gold & obsidian glass",
   },
   {
     id: "wood",
-    name: "Carved Wood",
-    desc: "Warm organic mahogany and maple wood carving",
+    name: "Carved Walnut",
+    desc: "Warm organic mahogany & golden birch",
   },
   {
     id: "pixel",
@@ -107,8 +112,8 @@ const PIECE_SET_OPTIONS: { id: PieceSetStyle; name: string; desc: string }[] = [
   },
   {
     id: "modern",
-    name: "Bauhaus Modern",
-    desc: "Sleek geometric minimalist silhouettes",
+    name: "Bauhaus Minimal",
+    desc: "Sleek geometric architectural silhouettes",
   },
 ];
 
@@ -389,9 +394,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               : "bg-[#0d0f12] border-[#252a36] hover:border-slate-600"
                           }`}
                         >
-                          <div className="min-w-0 pr-2">
-                            <span className="text-xs font-bold text-white block">{opt.name}</span>
-                            <span className="text-[10px] text-slate-400 block truncate">{opt.desc}</span>
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            <div className="flex items-center bg-[#14171f] p-1 rounded-lg border border-[#252a36] shrink-0">
+                              <ChessPiece type="k" color="w" size={20} style={opt.id} />
+                              <ChessPiece type="n" color="b" size={20} style={opt.id} />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-xs font-bold text-white block">{opt.name}</span>
+                              <span className="text-[10px] text-slate-400 block truncate">{opt.desc}</span>
+                            </div>
                           </div>
                           {isSelected && <Check className="w-4 h-4 text-[#d4a359] shrink-0" />}
                         </button>

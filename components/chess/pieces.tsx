@@ -25,7 +25,10 @@ export const ChessPiece: React.FC<PieceProps> = ({
   let fill = isWhite ? "#ffffff" : "#1a1a1a";
   let stroke = isWhite ? "#1a1a1a" : "#e0e0e0";
 
-  if (style === "wood") {
+  if (style === "gold") {
+    fill = isWhite ? "#E5BE6E" : "#14171f";
+    stroke = isWhite ? "#8C5E1B" : "#D4A359";
+  } else if (style === "wood") {
     fill = isWhite ? "#faedcd" : "#4a2810";
     stroke = isWhite ? "#7f4f24" : "#d4a373";
   } else if (style === "pixel") {

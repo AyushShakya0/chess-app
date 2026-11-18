@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { sound } from "../audio/sound.ts";
 
 export type BoardTheme = "classic" | "wood" | "glass" | "neon" | "obsidian" | "tournament" | "emerald";
-export type PieceSetStyle = "classic" | "wood" | "pixel" | "modern";
+export type PieceSetStyle = "classic" | "gold" | "wood" | "pixel" | "modern";
 export type EvalBarMode = "live" | "every-5" | "disabled";
 
 export interface ChessSettings {
