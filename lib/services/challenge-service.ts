@@ -94,7 +94,7 @@ export async function broadcastOpenChallenge(params: {
 
 export async function claimOpenChallenge(
   challengeId: string,
-  acceptorName: string = "AyushShakya"
+  acceptorName: string = "Guest Player"
 ): Promise<{ roomId: string }> {
   // First, find the challenge
   const challenge = localChallenges.find((c) => c.id === challengeId);

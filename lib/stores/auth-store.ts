@@ -48,6 +48,17 @@ export async function initAuth() {
   const localVip = typeof window !== "undefined" && localStorage.getItem("chess_vip_unlocked") === "true";
   globalAuthState.isVip = localVip;
 
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem("sovereign_auth_session");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        globalAuthState.profile = parsed;
+        globalAuthState.user = { id: parsed.id, email: parsed.email } as any;
+      }
+    } catch {}
+  }
+
   if (!isSupabaseConfigured()) {
     globalAuthState.isLoading = false;
     emitChange();
@@ -127,38 +138,100 @@ export function useAuth(): [
   }, []);
 
   const signInWithEmail = async (email: string, pass: string) => {
-    if (!isSupabaseConfigured()) {
-      return { error: "Supabase connection is not configured in this environment." };
+    if (isSupabaseConfigured()) {
+      try {
+        const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
+        if (error) return { error: error.message };
+        return {};
+      } catch (e: any) {
+        return { error: e.message || "Failed to sign in" };
+      }
     }
+
+    // Local-First session for offline / unconfigured environments
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-      if (error) return { error: error.message };
+      const username = email.split("@")[0] || "Grandmaster";
+      const profile: UserProfile = {
+        id: `u_${Date.now()}`,
+        username,
+        email,
+        avatar_url: null,
+        elo_bullet: 1200,
+        elo_blitz: 1200,
+        elo_rapid: 1200,
+        elo_puzzles: 1200,
+        is_vip: false,
+      };
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sovereign_auth_session", JSON.stringify(profile));
+        localStorage.setItem("sovereign_player_name", username);
+      }
+
+      globalAuthState.user = { id: profile.id, email } as any;
+      globalAuthState.profile = profile;
+      emitChange();
       return {};
     } catch (e: any) {
-      return { error: e.message || "Failed to sign in" };
+      return { error: e.message || "Failed to sign in locally" };
     }
   };
 
   const signUpWithEmail = async (email: string, pass: string, username: string) => {
-    if (!isSupabaseConfigured()) {
-      return { error: "Supabase connection is not configured in this environment." };
+    if (isSupabaseConfigured()) {
+      try {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password: pass,
+          options: { data: { username } },
+        });
+        if (error) return { error: error.message };
+        return {};
+      } catch (e: any) {
+        return { error: e.message || "Failed to sign up" };
+      }
     }
+
+    // Local-First registration for offline / unconfigured environments
     try {
-      const { error } = await supabase.auth.signUp({
+      const cleanUsername = username.trim() || email.split("@")[0] || "Player";
+      const profile: UserProfile = {
+        id: `u_${Date.now()}`,
+        username: cleanUsername,
         email,
-        password: pass,
-        options: { data: { username } },
-      });
-      if (error) return { error: error.message };
+        avatar_url: null,
+        elo_bullet: 1200,
+        elo_blitz: 1200,
+        elo_rapid: 1200,
+        elo_puzzles: 1200,
+        is_vip: false,
+      };
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("sovereign_auth_session", JSON.stringify(profile));
+        localStorage.setItem("sovereign_player_name", cleanUsername);
+      }
+
+      globalAuthState.user = { id: profile.id, email } as any;
+      globalAuthState.profile = profile;
+      emitChange();
       return {};
     } catch (e: any) {
-      return { error: e.message || "Failed to sign up" };
+      return { error: e.message || "Failed to sign up locally" };
     }
   };
 
   const signOut = async () => {
     if (isSupabaseConfigured()) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+    }
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("sovereign_auth_session");
+        localStorage.removeItem("sovereign_player_name");
+      } catch {}
     }
     globalAuthState.user = null;
     globalAuthState.profile = null;

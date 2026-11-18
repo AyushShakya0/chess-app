@@ -1,21 +1,44 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Crown, Trophy, TrendingUp, ChevronRight, Award } from "lucide-react";
 import { useAuth } from "@/lib/stores/auth-store";
+import { getLocalPlayerStats } from "@/lib/chess/elo";
 
 export const PlayerOverviewWidget: React.FC = () => {
   const [auth] = useAuth();
+  const isAuthenticated = Boolean(auth.user || auth.profile);
 
-  const username =
-    auth.profile?.username || auth.user?.email?.split("@")[0] || "AyushShakya";
+  const [stats, setStats] = useState(() => getLocalPlayerStats());
+  useEffect(() => {
+    setStats(getLocalPlayerStats());
+  }, [auth.user]);
 
-  const userInitials = username.slice(0, 2).toUpperCase() || "AS";
+  const username = isAuthenticated
+    ? auth.profile?.username || auth.user?.email?.split("@")[0] || "Player"
+    : "Guest Player";
 
-  const rapidElo = auth.profile?.elo_rapid || 1642;
-  const blitzElo = auth.profile?.elo_blitz || 1580;
-  const puzzleElo = auth.profile?.elo_puzzles || 1720;
+  const userInitials = isAuthenticated
+    ? username.slice(0, 2).toUpperCase()
+    : "G";
+
+  const rapidElo = isAuthenticated
+    ? auth.profile?.elo_rapid || 1200
+    : stats.eloRapid || 1200;
+
+  const blitzElo = isAuthenticated
+    ? auth.profile?.elo_blitz || 1200
+    : stats.eloBots || 1200;
+
+  const puzzleElo = isAuthenticated
+    ? auth.profile?.elo_puzzles || 1200
+    : stats.eloPuzzles || 1200;
+
+  const hasPlayed = stats.gamesPlayed > 0;
+  const winRate = hasPlayed
+    ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100)
+    : 0;
 
   return (
     <div className="bg-[#14171f] border border-[#252a36] rounded-2xl p-5 shadow-xl space-y-4">
@@ -34,7 +57,7 @@ export const PlayerOverviewWidget: React.FC = () => {
               <span className="text-xs">🇳🇵</span>
             </div>
             <span className="text-[10px] font-semibold text-slate-400">
-              Sovereign Member
+              {isAuthenticated ? "Sovereign Member" : "Guest Challenger (1200)"}
             </span>
           </div>
         </div>
@@ -73,8 +96,16 @@ export const PlayerOverviewWidget: React.FC = () => {
           <span className="text-xs font-bold text-slate-300">Win Rate</span>
         </div>
         <div className="flex items-center gap-1.5 font-bold">
-          <span className="text-xs text-emerald-400 font-mono">62%</span>
-          <span className="text-[10px] text-slate-500">(178W / 287G)</span>
+          {hasPlayed ? (
+            <>
+              <span className="text-xs text-emerald-400 font-mono">{winRate}%</span>
+              <span className="text-[10px] text-slate-500">
+                ({stats.gamesWon}W / {stats.gamesPlayed}G)
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-slate-400 font-mono">-- (0 Games)</span>
+          )}
         </div>
       </div>
     </div>

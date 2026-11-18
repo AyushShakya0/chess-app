@@ -9,16 +9,24 @@ import { signInWithGoogle } from "@/lib/appwrite/auth";
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialMode?: "signin" | "signup";
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
+export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, initialMode = "signin" }) => {
   const [auth, { signInWithEmail, signUpWithEmail, signOut }] = useAuth();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "signup">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setError(null);
+    }
+  }, [isOpen, initialMode]);
 
   if (!isOpen) return null;
 
@@ -96,11 +104,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             <div className="grid grid-cols-2 gap-2 bg-[#0d0f12] p-3 rounded-2xl border border-[#252a36] text-xs">
               <div>
                 <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-bold">Blitz Rating</span>
-                <span className="font-bold text-[#d4a359] text-base font-mono">{auth.profile?.elo_blitz || 1642}</span>
+                <span className="font-bold text-[#d4a359] text-base font-mono">{auth.profile?.elo_blitz || 1200}</span>
               </div>
               <div>
                 <span className="text-slate-500 block text-[10px] uppercase tracking-wider font-bold">Tactics ELO</span>
-                <span className="font-bold text-emerald-400 text-base font-mono">{auth.profile?.elo_puzzles || 1720}</span>
+                <span className="font-bold text-emerald-400 text-base font-mono">{auth.profile?.elo_puzzles || 1200}</span>
               </div>
             </div>
 
@@ -183,7 +191,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                       required
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="AyushShakya"
+                      placeholder="e.g. Grandmaster"
                       className="w-full bg-[#0d0f12] border border-[#252a36] rounded-xl px-3.5 py-2.5 pl-10 text-white text-xs placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#d4a359]"
                     />
                     <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />

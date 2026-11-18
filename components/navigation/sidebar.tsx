@@ -12,9 +12,10 @@ import { SettingsModal } from "@/components/chess/settings-modal";
 interface SidebarProps {
   isMobileOpen?: boolean;
   onMobileClose?: () => void;
+  onOpenAuth?: (mode?: "signin" | "signup") => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose, onOpenAuth }) => {
   const pathname = usePathname();
   const [auth] = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -32,14 +33,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
 
   const activeId = getActiveNavId();
 
-  const userInitials = auth.profile?.username
-    ? auth.profile.username.slice(0, 2).toUpperCase()
-    : auth.user?.email
-    ? auth.user.email.slice(0, 2).toUpperCase()
-    : "AS";
+  const isAuthenticated = Boolean(auth.user || auth.profile);
 
-  const username =
-    auth.profile?.username || auth.user?.email?.split("@")[0] || "AyushShakya";
+  const userInitials = isAuthenticated
+    ? auth.profile?.username
+      ? auth.profile.username.slice(0, 2).toUpperCase()
+      : auth.user?.email
+      ? auth.user.email.slice(0, 2).toUpperCase()
+      : "PL"
+    : "G";
+
+  const username = isAuthenticated
+    ? auth.profile?.username || auth.user?.email?.split("@")[0] || "Player"
+    : "Guest Player";
+
+  const playerElo = isAuthenticated
+    ? auth.profile?.elo_blitz || 1200
+    : 1200;
 
   return (
     <>
@@ -141,35 +151,76 @@ export const Sidebar: React.FC<SidebarProps> = ({ isMobileOpen, onMobileClose })
           })}
         </nav>
 
-        {/* Footer Area: User Mini-Profile & Collapse Toggle */}
+        {/* Footer Area: User Mini-Profile / Auth Button & Collapse Toggle */}
         <div className="p-3 border-t border-[#252a36] bg-[#0d0f12] shrink-0 space-y-2">
-          {/* User Profile Card */}
-          <Link
-            href="/profile"
-            onClick={onMobileClose}
-            className={`flex items-center gap-3 p-2 rounded-2xl hover:bg-[#14171f] border border-transparent hover:border-[#252a36] transition-colors group ${
-              isCollapsed ? "justify-center" : ""
-            }`}
-          >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#d4a359] to-[#f0cf85] text-black flex items-center justify-center font-black text-sm shrink-0 shadow-md shadow-[#d4a359]/20 border border-white/20">
-              {userInitials}
-            </div>
-
-            {!isCollapsed && (
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-white truncate group-hover:text-[#d4a359] transition-colors">
-                    {username}
-                  </span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
-                </div>
-                <div className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
-                  <Crown className="w-3 h-3 text-[#d4a359]" />
-                  <span>1642 ELO</span>
-                </div>
+          {isAuthenticated ? (
+            <Link
+              href="/profile"
+              onClick={onMobileClose}
+              className={`flex items-center gap-3 p-2 rounded-2xl hover:bg-[#14171f] border border-transparent hover:border-[#252a36] transition-colors group ${
+                isCollapsed ? "justify-center" : ""
+              }`}
+            >
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#d4a359] to-[#f0cf85] text-black flex items-center justify-center font-black text-sm shrink-0 shadow-md shadow-[#d4a359]/20 border border-white/20">
+                {userInitials}
               </div>
-            )}
-          </Link>
+
+              {!isCollapsed && (
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white truncate group-hover:text-[#d4a359] transition-colors">
+                      {username}
+                    </span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+                  </div>
+                  <div className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
+                    <Crown className="w-3 h-3 text-[#d4a359]" />
+                    <span>{playerElo} ELO</span>
+                  </div>
+                </div>
+              )}
+            </Link>
+          ) : (
+            <div className={`space-y-2 ${isCollapsed ? "flex flex-col items-center" : ""}`}>
+              <div
+                onClick={() => onOpenAuth?.("signin")}
+                role="button"
+                tabIndex={0}
+                className={`flex items-center gap-3 p-2 rounded-2xl bg-[#14171f]/80 hover:bg-[#1c202a] border border-[#252a36] transition-colors cursor-pointer group ${
+                  isCollapsed ? "justify-center p-2" : ""
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-[#1c202a] text-[#d4a359] flex items-center justify-center font-black text-sm shrink-0 border border-[#d4a359]/30">
+                  G
+                </div>
+
+                {!isCollapsed && (
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-white truncate group-hover:text-[#d4a359] transition-colors">
+                        Guest Player
+                      </span>
+                      <span className="text-[9px] px-1 py-0.2 bg-[#252a36] text-slate-400 rounded">Guest</span>
+                    </div>
+                    <div className="text-[10px] font-semibold text-slate-400 flex items-center gap-1">
+                      <span>1200 ELO</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {!isCollapsed && (
+                <button
+                  type="button"
+                  onClick={() => onOpenAuth?.("signin")}
+                  className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-[#d4a359] to-[#f0cf85] hover:brightness-110 text-black text-xs font-black font-display shadow-md shadow-[#d4a359]/20 transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Sign In / Sign Up</span>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Collapse/Expand Toggle on Desktop */}
           <button

@@ -150,10 +150,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [auth] = useAuth();
 
   const [usernameInput, setUsernameInput] = useState(() => {
-    return auth.profile?.username || (typeof window !== "undefined" ? localStorage.getItem("sovereign_player_name") || "AyushShakya" : "AyushShakya");
+    return auth.profile?.username || (typeof window !== "undefined" ? localStorage.getItem("sovereign_player_name") || "Guest Player" : "Guest Player");
   });
   const [emailInput, setEmailInput] = useState(() => {
-    return auth.user?.email || "ayush@example.com";
+    return auth.user?.email || "guest@sovereignchess.app";
   });
   const [saveSuccess, setSaveSuccess] = useState(false);
 

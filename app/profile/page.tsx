@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/stores/auth-store";
 import { SettingsModal } from "@/components/chess/settings-modal";
+import { AuthModal } from "@/components/auth/auth-modal";
+import { getLocalPlayerStats } from "@/lib/chess/elo";
 
 type ProfileTab = "games" | "stats" | "achievements";
 type StatsTab = "overview" | "ratings" | "performance" | "games";
@@ -81,16 +83,49 @@ export default function ProfilePage() {
   const [profileTab, setProfileTab] = useState<ProfileTab>("games");
   const [statsTab, setStatsTab] = useState<StatsTab>("overview");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
-  const username =
-    auth.profile?.username ||
-    (typeof window !== "undefined"
-      ? localStorage.getItem("sovereign_player_name") || "AyushShakya"
-      : "AyushShakya");
+  const isAuthenticated = Boolean(auth.user || auth.profile);
 
-  const rating = 1642;
-  const gamesPlayed = 287;
-  const winRate = 62;
+  const username = isAuthenticated
+    ? (auth.profile?.username || auth.user?.email?.split("@")[0] || "Player")
+    : (typeof window !== "undefined" && localStorage.getItem("sovereign_player_name"))
+    ? localStorage.getItem("sovereign_player_name")!
+    : "Guest Player";
+
+  const [stats, setStats] = useState(() => getLocalPlayerStats());
+
+  React.useEffect(() => {
+    setStats(getLocalPlayerStats());
+  }, [auth.user]);
+
+  const rating = isAuthenticated
+    ? (auth.profile?.elo_blitz || stats.eloBots || 1200)
+    : (stats.eloBots || 1200);
+
+  const hasPlayedGames = stats.gamesPlayed > 0;
+  const gamesPlayed = hasPlayedGames ? stats.gamesPlayed : (isAuthenticated ? 0 : 287);
+  const winRate = hasPlayedGames
+    ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100)
+    : 62;
+  const drawRate = hasPlayedGames
+    ? Math.round((stats.gamesDrawn / stats.gamesPlayed) * 100)
+    : 12;
+  const lossRate = hasPlayedGames
+    ? Math.max(0, 100 - winRate - drawRate)
+    : 26;
+
+  const displayGames = stats.recentGames && stats.recentGames.length > 0
+    ? stats.recentGames.map((g) => ({
+        id: g.id,
+        opponent: g.opponent,
+        result: g.result,
+        timeControl: g.timeControl,
+        type: "Rated Match",
+        date: g.date,
+        eloChange: g.eloChange,
+      }))
+    : RECENT_GAMES;
 
   return (
     <AppShell>
@@ -125,14 +160,37 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              <button
-                onClick={() => setIsSettingsOpen(true)}
-                className="px-4 py-1.5 bg-[#1c202a] hover:bg-[#252a36] border border-[#252a36] text-xs font-bold text-slate-200 hover:text-white rounded-xl transition-colors self-start sm:self-center flex items-center gap-1.5"
-              >
-                <Edit3 className="w-3.5 h-3.5 text-[#d4a359]" />
-                Edit Profile
-              </button>
+              {isAuthenticated ? (
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  className="px-4 py-1.5 bg-[#1c202a] hover:bg-[#252a36] border border-[#252a36] text-xs font-bold text-slate-200 hover:text-white rounded-xl transition-colors self-start sm:self-center flex items-center gap-1.5"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-[#d4a359]" />
+                  Edit Profile
+                </button>
+              ) : (
+                <button
+                  onClick={() => setIsAuthOpen(true)}
+                  className="px-4 py-1.5 bg-gradient-to-r from-[#d4a359] to-[#f0cf85] hover:brightness-110 text-black text-xs font-black font-display rounded-xl shadow-md shadow-[#d4a359]/20 transition-all self-start sm:self-center"
+                >
+                  Sign In / Register
+                </button>
+              )}
             </div>
+
+            {!isAuthenticated && (
+              <div className="p-3 bg-[#d4a359]/10 border border-[#d4a359]/30 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <span className="text-[#f0cf85]">
+                  Playing in Guest Mode ({rating} ELO). Sign in to persist match history and sync ratings across devices.
+                </span>
+                <button
+                  onClick={() => setIsAuthOpen(true)}
+                  className="px-3 py-1 bg-[#d4a359] text-black font-bold rounded-lg shrink-0 hover:bg-[#f0cf85] transition-colors"
+                >
+                  Sign In
+                </button>
+              </div>
+            )}
 
             {/* 3 Metric Badges matching Reference Image */}
             <div className="grid grid-cols-3 gap-3">
@@ -229,7 +287,7 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="space-y-2">
-                  {RECENT_GAMES.map((game) => (
+                  {displayGames.map((game) => (
                     <div
                       key={game.id}
                       className="flex items-center justify-between p-3 bg-[#0d0f12] hover:bg-[#181c26] border border-[#252a36] rounded-xl transition-all"
@@ -510,82 +568,85 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Donut Chart with Legend */}
-                <div className="flex items-center gap-4 py-2">
+                {/* Donut Chart with Legend matching Reference Design #5 */}
+                <div className="flex items-center gap-5 py-3">
                   <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
                     <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                      {/* Background Circle */}
+                      {/* Background Track Circle */}
                       <circle
                         cx="50"
                         cy="50"
                         r="38"
                         fill="transparent"
                         stroke="#1c202a"
-                        strokeWidth="12"
+                        strokeWidth="11"
                       />
-                      {/* Win (62%) - Emerald */}
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="38"
-                        fill="transparent"
-                        stroke="#22c55e"
-                        strokeWidth="12"
-                        strokeDasharray="238.76"
-                        strokeDashoffset="90.72"
-                      />
-                      {/* Draw (12%) - Gold */}
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="38"
-                        fill="transparent"
-                        stroke="#eab308"
-                        strokeWidth="12"
-                        strokeDasharray="28.65 210.11"
-                        strokeDashoffset="90.72"
-                      />
-                      {/* Loss (26%) - Rose */}
-                      <circle
-                        cx="50"
-                        cy="50"
-                        r="38"
-                        fill="transparent"
-                        stroke="#ef4444"
-                        strokeWidth="12"
-                        strokeDasharray="62.07 176.69"
-                        strokeDashoffset="62.07"
-                      />
+                      {/* Win Arc (Emerald) */}
+                      {winRate > 0 && (
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="38"
+                          fill="transparent"
+                          stroke="#22c55e"
+                          strokeWidth="11"
+                          strokeDasharray={`${((winRate / 100) * 238.761).toFixed(2)} 238.76`}
+                          strokeDashoffset="0"
+                        />
+                      )}
+                      {/* Draw Arc (Gold/Amber) */}
+                      {drawRate > 0 && (
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="38"
+                          fill="transparent"
+                          stroke="#eab308"
+                          strokeWidth="11"
+                          strokeDasharray={`${((drawRate / 100) * 238.761).toFixed(2)} 238.76`}
+                          strokeDashoffset={`-${((winRate / 100) * 238.761).toFixed(2)}`}
+                        />
+                      )}
+                      {/* Loss Arc (Rose/Red) */}
+                      {lossRate > 0 && (
+                        <circle
+                          cx="50"
+                          cy="50"
+                          r="38"
+                          fill="transparent"
+                          stroke="#ef4444"
+                          strokeWidth="11"
+                          strokeDasharray={`${((lossRate / 100) * 238.761).toFixed(2)} 238.76`}
+                          strokeDashoffset={`-${(((winRate + drawRate) / 100) * 238.761).toFixed(2)}`}
+                        />
+                      )}
                     </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                      <span className="text-xs font-black text-white">{winRate}%</span>
-                      <span className="text-[8px] text-slate-400 uppercase font-bold">Win</span>
-                    </div>
                   </div>
 
-                  {/* Legend */}
-                  <div className="space-y-1.5 text-[11px] font-bold">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                      <span className="text-slate-300">Win</span>
-                      <span className="text-emerald-400 font-mono ml-auto">62%</span>
+                  {/* Clean Legend matching Reference Screen #5 */}
+                  <div className="space-y-2 text-xs font-bold flex-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                        <span className="text-slate-300">Win</span>
+                      </div>
+                      <span className="text-emerald-400 font-mono font-bold">{winRate}%</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                      <span className="text-slate-300">Draw</span>
-                      <span className="text-yellow-400 font-mono ml-auto">12%</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 shrink-0" />
+                        <span className="text-slate-300">Draw</span>
+                      </div>
+                      <span className="text-yellow-400 font-mono font-bold">{drawRate}%</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                      <span className="text-slate-300">Loss</span>
-                      <span className="text-rose-400 font-mono ml-auto">26%</span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                        <span className="text-slate-300">Loss</span>
+                      </div>
+                      <span className="text-rose-400 font-mono font-bold">{lossRate}%</span>
                     </div>
                   </div>
-                </div>
-
-                <div className="pt-2 border-t border-[#252a36] flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Accuracy Avg:</span>
-                  <span className="font-bold text-[#d4a359]">88.4%</span>
                 </div>
               </div>
             </div>
@@ -594,6 +655,7 @@ export default function ProfilePage() {
       </div>
 
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
     </AppShell>
   );
 }

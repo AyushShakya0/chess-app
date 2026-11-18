@@ -15,7 +15,10 @@ export const QuickPlayGrid: React.FC = () => {
     setLoadingTc(option.id);
     try {
       const playerName =
-        auth.profile?.username || auth.user?.email?.split("@")[0] || "AyushShakya";
+        auth.profile?.username ||
+        auth.user?.email?.split("@")[0] ||
+        (typeof window !== "undefined" ? localStorage.getItem("sovereign_player_name") : null) ||
+        "Guest Player";
 
       const res = await fetch("/api/room/create", {
         method: "POST",

@@ -271,8 +271,8 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
 
   const playerName =
     boardOrientation === "white"
-      ? room?.white?.name || auth.profile?.username || "AyushShakya"
-      : room?.black?.name || auth.profile?.username || "AyushShakya";
+      ? room?.white?.name || auth.profile?.username || (typeof window !== "undefined" ? localStorage.getItem("sovereign_player_name") : null) || "Guest Player"
+      : room?.black?.name || auth.profile?.username || (typeof window !== "undefined" ? localStorage.getItem("sovereign_player_name") : null) || "Guest Player";
 
   const opponentClockMs = boardOrientation === "white" ? blackDisplayMs : whiteDisplayMs;
   const playerClockMs = boardOrientation === "white" ? whiteDisplayMs : blackDisplayMs;
@@ -386,7 +386,7 @@ export default function OnlineRoomPage({ params }: RoomPageProps) {
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
                   </div>
                   <span className="text-[10px] text-[#d4a359] font-semibold">
-                    1642 ELO &bull; {boardOrientation === "white" ? "White" : "Black"}
+                    {auth.profile?.elo_blitz || 1200} ELO &bull; {boardOrientation === "white" ? "White" : "Black"}
                   </span>
                 </div>
               </div>

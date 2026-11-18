@@ -57,7 +57,10 @@ export const OpenChallengesFeed: React.FC = () => {
     setAcceptingId(challenge.id);
     try {
       const playerName =
-        auth.profile?.username || auth.user?.email?.split("@")[0] || "AyushShakya";
+        auth.profile?.username ||
+        auth.user?.email?.split("@")[0] ||
+        (typeof window !== "undefined" ? localStorage.getItem("sovereign_player_name") : null) ||
+        "Guest Player";
       const { roomId } = await claimOpenChallenge(challenge.id, playerName);
       router.push(`/play/${roomId}`);
     } catch (err: any) {
@@ -71,8 +74,11 @@ export const OpenChallengesFeed: React.FC = () => {
     setIsBroadcasting(true);
     try {
       const creatorName =
-        auth.profile?.username || auth.user?.email?.split("@")[0] || "AyushShakya";
-      const creatorElo = auth.profile?.elo_blitz || 1642;
+        auth.profile?.username ||
+        auth.user?.email?.split("@")[0] ||
+        (typeof window !== "undefined" ? localStorage.getItem("sovereign_player_name") : null) ||
+        "Guest Player";
+      const creatorElo = auth.profile?.elo_blitz || 1200;
 
       const created = await broadcastOpenChallenge({
         creatorName,

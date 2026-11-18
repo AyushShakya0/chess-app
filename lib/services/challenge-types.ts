@@ -39,8 +39,8 @@ export function generateChallengePayload(params: {
   return {
     id: `chal_${now.toString(36)}_${Math.random().toString(36).slice(2, 7)}`,
     creatorId: params.creatorId || "guest_" + Math.random().toString(36).slice(2, 6),
-    creatorName: params.creatorName || "AyushShakya",
-    creatorElo: params.creatorElo || 1642,
+    creatorName: params.creatorName || "Guest",
+    creatorElo: params.creatorElo || 1200,
     timeControl: params.timeControl,
     category,
     rated: params.rated ?? true,

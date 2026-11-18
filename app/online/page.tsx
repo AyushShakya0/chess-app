@@ -404,7 +404,7 @@ export default function OnlineLobbyPage() {
                       type="text"
                       value={playerName}
                       onChange={(e) => setPlayerName(e.target.value)}
-                      placeholder="AyushShakya"
+                      placeholder="e.g. Grandmaster"
                       maxLength={30}
                       className="w-full bg-[#0d0f12] border border-[#252a36] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-[#d4a359] transition-colors"
                     />

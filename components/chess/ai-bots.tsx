@@ -33,6 +33,7 @@ import { VictoryModal } from "./victory-modal";
 import { useChessGame } from "@/lib/chess/use-chess-game";
 import { useSettings } from "@/lib/stores/settings-store";
 import { useAuth } from "@/lib/stores/auth-store";
+import { getLocalPlayerStats, recordBotGameResult, DEFAULT_STARTING_ELO } from "@/lib/chess/elo";
 
 export interface BotPersona {
   id: string;
@@ -180,6 +181,19 @@ export const AiBotsPlay: React.FC = () => {
   const [isDismissedVictory, setIsDismissedVictory] = useState(false);
   const isVictoryOpen = Boolean(gameOver) && !isDismissedVictory;
   const [switchedMidGame, setSwitchedMidGame] = useState<string | null>(null);
+
+  const [playerStats, setPlayerStats] = useState(() => getLocalPlayerStats());
+  const [lastRatingDelta, setLastRatingDelta] = useState<string | null>(null);
+
+  const handleEndGame = useCallback(
+    (result: "won" | "lost" | "draw", reason: string) => {
+      setGameOver(reason);
+      const outcome = recordBotGameResult(result, selectedBot.name, selectedBot.elo);
+      setPlayerStats(outcome.stats);
+      setLastRatingDelta(outcome.delta >= 0 ? `+${outcome.delta}` : `${outcome.delta}`);
+    },
+    [selectedBot.name, selectedBot.elo]
+  );
 
   // Zen / Focus Mode
   const [isZenMode, setIsZenMode] = useState(false);
@@ -395,15 +409,15 @@ export const AiBotsPlay: React.FC = () => {
         updateEvaluation(currentGame);
 
         if (currentGame.isCheckmate()) {
-          setGameOver(`Checkmate! ${activeBot.name} won the match!`);
+          handleEndGame("lost", `Checkmate! ${activeBot.name} won the match!`);
           sound.playDefeat();
           const speech = getRandomLine(activeBot.dialogs.win);
           setLastBotRemark(speech);
           setChatLog((prev) => [...prev, { sender: "bot", text: speech }]);
         } else if (currentGame.isThreefoldRepetition()) {
-          setGameOver("Draw by threefold repetition!");
+          handleEndGame("draw", "Draw by threefold repetition!");
         } else if (currentGame.isDraw()) {
-          setGameOver("Draw reached against " + activeBot.name);
+          handleEndGame("draw", "Draw reached against " + activeBot.name);
         } else {
           // Trigger bot dialogue
           triggerBotReaction(executed, currentGame, activeBot);
@@ -462,7 +476,7 @@ export const AiBotsPlay: React.FC = () => {
     updateEvaluation(game);
 
     if (game.isCheckmate()) {
-      setGameOver(`Checkmate! You defeated ${selectedBot.name}! 🏆`);
+      handleEndGame("won", `Checkmate! You defeated ${selectedBot.name}! 🏆`);
       sound.playVictory();
       confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
       const speech = getRandomLine(selectedBot.dialogs.lose);
@@ -472,12 +486,12 @@ export const AiBotsPlay: React.FC = () => {
     }
 
     if (game.isThreefoldRepetition()) {
-      setGameOver("Draw by threefold repetition!");
+      handleEndGame("draw", "Draw by threefold repetition!");
       return;
     }
 
     if (game.isDraw()) {
-      setGameOver("Draw reached against " + selectedBot.name);
+      handleEndGame("draw", "Draw reached against " + selectedBot.name);
       return;
     }
 
@@ -487,14 +501,14 @@ export const AiBotsPlay: React.FC = () => {
 
   const handleResign = () => {
     if (gameOver) return;
-    setGameOver(`${selectedBot.name} won by resignation!`);
+    handleEndGame("lost", `${selectedBot.name} won by resignation!`);
     sound.playDefeat();
   };
 
   const handleOfferDraw = () => {
     if (gameOver) return;
     if (Math.abs(evalScore) <= 1.5) {
-      setGameOver("Draw agreed by mutual consent!");
+      handleEndGame("draw", "Draw agreed by mutual consent!");
       sound.playMove();
     } else {
       const line = "I have a strong position, I decline your draw offer!";
@@ -503,7 +517,7 @@ export const AiBotsPlay: React.FC = () => {
     }
   };
 
-  const playerName = auth.profile?.username || auth.user?.email?.split("@")[0] || "AyushShakya";
+  const playerName = auth.profile?.username || auth.user?.email?.split("@")[0] || (auth.user ? "Player" : "Guest Player");
   const playerInitials = playerName.slice(0, 2).toUpperCase();
 
   return (
@@ -606,7 +620,7 @@ export const AiBotsPlay: React.FC = () => {
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white font-display leading-tight">{playerName}</span>
                   <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 bg-[#1c202a] text-emerald-400 border border-emerald-500/30 rounded-md">
-                    1642 ELO
+                    {playerStats.eloBots || DEFAULT_STARTING_ELO} ELO
                   </span>
                 </div>
                 <span className="text-[11px] text-slate-400 block -mt-0.5 font-medium">Sovereign Challenger</span>
@@ -960,9 +974,10 @@ export const AiBotsPlay: React.FC = () => {
             outcome={outcome}
             reason={reason}
             opponentName={selectedBot.name}
-            ratingChange={isWin ? "+16" : isDraw ? "+2" : "-12"}
+            ratingChange={lastRatingDelta || (isWin ? "+16" : isDraw ? "+0" : "-12")}
             onPlayAgain={() => {
               resetGame();
+              setPlayerStats(getLocalPlayerStats());
             }}
             onBackToLobby={() => {
               setIsDismissedVictory(true);

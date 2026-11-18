@@ -29,6 +29,7 @@ import {
 } from "@/lib/chess/puzzle-rating";
 import { useAuth } from "@/lib/stores/auth-store";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase/client";
+import { AuthModal } from "@/components/auth/auth-modal";
 
 export type PuzzleMode = "daily" | "rush" | "streak";
 export type RatingTier = "all" | "under-1000" | "1000-1400" | "1400-1800" | "1800+";
@@ -131,6 +132,19 @@ export const PuzzleArena: React.FC = () => {
   const [puzzleStartTime, setPuzzleStartTime] = useState<number>(() => Date.now());
   const [hasDeductedForCurrent, setHasDeductedForCurrent] = useState<boolean>(false);
 
+  // Guest Puzzle Limitation (3 free puzzles before requiring login)
+  const [guestSolvedCount, setGuestSolvedCount] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const val = localStorage.getItem("sovereign_guest_puzzles_solved");
+        return val ? parseInt(val, 10) || 0 : 0;
+      } catch {}
+    }
+    return 0;
+  });
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signup");
+
   // Sync with Supabase profile rating if available
   useEffect(() => {
     if (authState.profile?.elo_puzzles && authState.profile.elo_puzzles > 100) {
@@ -229,6 +243,20 @@ export const PuzzleArena: React.FC = () => {
         setRatingDelta(ratingResult.delta);
 
         setFeedback(`🎉 Tactical Masterpiece! Puzzle Solved! (+${ratingResult.delta} ELO)`);
+
+        if (!authState.user) {
+          const updated = guestSolvedCount + 1;
+          setGuestSolvedCount(updated);
+          try {
+            localStorage.setItem("sovereign_guest_puzzles_solved", String(updated));
+          } catch {}
+          if (updated >= 3) {
+            setTimeout(() => {
+              setAuthMode("signup");
+              setShowAuthGate(true);
+            }, 1400);
+          }
+        }
 
         if (authState.user && isSupabaseConfigured()) {
           void supabase
@@ -343,6 +371,11 @@ export const PuzzleArena: React.FC = () => {
   };
 
   const nextPuzzle = () => {
+    if (!authState.user && guestSolvedCount >= 3) {
+      setAuthMode("signup");
+      setShowAuthGate(true);
+      return;
+    }
     setCurrentIdx((i) => (i + 1) % activePuzzles.length);
   };
 
@@ -384,6 +417,50 @@ export const PuzzleArena: React.FC = () => {
             </p>
           </div>
         </div>
+
+        {/* Guest Mode Puzzle Limit Banner */}
+        {!authState.user && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 bg-gradient-to-r from-[#14171f] to-[#1c202a] border border-[#d4a359]/30 rounded-2xl shadow-lg">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#d4a359]/20 text-[#d4a359] flex items-center justify-center font-bold">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-white block">
+                  Guest Practice: {Math.min(guestSolvedCount, 3)}/3 Free Puzzles Solved
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  {guestSolvedCount >= 3
+                    ? "Daily limit reached. Sign in to continue solving and save your rating!"
+                    : "Solve up to 3 puzzles as a guest. Sign in to save your tactics rating across devices."}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("signin");
+                  setShowAuthGate(true);
+                }}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 hover:text-white bg-[#0d0f12] border border-[#252a36]"
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode("signup");
+                  setShowAuthGate(true);
+                }}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-black bg-gradient-to-r from-[#d4a359] to-[#f0cf85] text-black shadow-md shadow-[#d4a359]/20"
+              >
+                Create Account
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Puzzle ELO Badge & Mode Selector */}
         <div className="flex flex-wrap items-center gap-3">
@@ -746,6 +823,11 @@ export const PuzzleArena: React.FC = () => {
           </div>
         </div>
       </div>
+      <AuthModal
+        isOpen={showAuthGate}
+        onClose={() => setShowAuthGate(false)}
+        initialMode={authMode}
+      />
     </div>
   );
 };
